@@ -520,7 +520,17 @@ export default function App() {
     if (!token) return
     setSyncStatus("loading")
     dbLoad(token).then(data => {
-      if (data.length>0) { setRows(data.map(r=>({...r,isNew:false}))); setLastSync(new Date()) }
+      if (data.length>0) {
+        // Corrige automaticamente entregues que ainda não foram arquivados
+        // Exceção: pedidos em Suporte ficam no Suporte para finalizar tratativa
+        const fixed = data.map(r => ({
+          ...r, isNew: false,
+          atendimento: isEntregue(r.status) && !r.enviadoSuporte ? "Resolvido" : r.atendimento,
+          enviadoSuporte: isEntregue(r.status) && !r.enviadoSuporte ? false : r.enviadoSuporte,
+        }))
+        setRows(fixed)
+        setLastSync(new Date())
+      }
       setSyncStatus("idle")
     }).catch(e => { setSyncStatus("error"); addToast("Erro ao carregar: "+e.message,"error",8000) })
   }, [token])
@@ -586,19 +596,32 @@ export default function App() {
           // Novo pedido — adiciona
           result.push(novo); added++
         } else if (norm(existing.status) === norm(novo.status)) {
-          // Mesmo status — ignora (não duplica)
-          skipped++
+          // Mesmo status — se for entregue, não está em suporte e não arquivado, arquiva
+          if (isEntregue(novo.status) && !existing.enviadoSuporte && existing.atendimento !== "Resolvido") {
+            const idx = result.findIndex(r=>r.nuvem===novo.nuvem)
+            if (idx>=0) {
+              result[idx] = { ...existing, atendimento:"Resolvido", enviadoSuporte:false,
+                historico:[...existing.historico,{acao:"Arquivado automaticamente — entrega concluída",ts:new Date().toLocaleString("pt-BR")}] }
+              updated++
+            }
+          } else { skipped++ }
         } else {
           // Status diferente — atualiza mantendo obs/historico/responsavel
           const idx = result.findIndex(r=>r.nuvem===novo.nuvem)
           if (idx>=0) {
+            const statusAnterior = existing.status
+            // Se está em Suporte e status mudou → marca alerta para o atendente
+            const alertaStatus = existing.enviadoSuporte && norm(statusAnterior) !== norm(novo.status)
             result[idx] = {
               ...novo,
               id: existing.id,
               obs: existing.obs,
               responsavel: existing.responsavel,
               chamado: existing.chamado,
-              historico: [...existing.historico, {acao:`Status atualizado: ${existing.status} → ${novo.status}`, ts:new Date().toLocaleString("pt-BR")}],
+              enviadoSuporte: existing.enviadoSuporte,
+              atendimento: existing.enviadoSuporte ? existing.atendimento : novo.atendimento,
+              alertaStatus: alertaStatus ? `Status atualizado: ${statusAnterior} → ${novo.status}` : existing.alertaStatus,
+              historico: [...existing.historico, {acao:`Status atualizado: ${statusAnterior} → ${novo.status}`, ts:new Date().toLocaleString("pt-BR")}],
               isNew: true
             }
             updated++
@@ -1029,11 +1052,17 @@ export default function App() {
               :supRows.map(r=>{
                 const isSel=selSup===r.id, acColor=r.urgencia==="Alta"?"#e74c3c":r.urgencia==="Média"?GOLD:"#27ae60"
                 return(
-                  <div key={r.id} onClick={()=>setSelSup(isSel?null:r.id)} style={{padding:"11px 16px 11px 12px",cursor:"pointer",borderBottom:"1px solid #f5f5f5",borderLeft:`3px solid ${acColor}`,background:isSel?"#fdf8f0":"#fff",display:"flex",alignItems:"flex-start",gap:8}}>
+                  <div key={r.id} onClick={()=>setSelSup(isSel?null:r.id)} style={{padding:"11px 16px 11px 12px",cursor:"pointer",borderBottom:"1px solid #f5f5f5",borderLeft:`3px solid ${acColor}`,background:isSel?"#fdf8f0":r.alertaStatus?"#fffbf0":"#fff",display:"flex",alignItems:"flex-start",gap:8}}>
                     {perms?.canOperate&&<input type="checkbox" checked={selSupIds.has(r.id)} onClick={e=>e.stopPropagation()} onChange={()=>toggleSelSup(r.id)} style={{marginTop:3,cursor:"pointer",flexShrink:0}}/>}
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:3}}><span style={{fontWeight:500,fontSize:12,color:"#000"}}>{r.nuvem}</span><TimeOpenBadge sentAt={r.sentAt}/></div>
                       <div style={{fontSize:12,color:"#555",marginBottom:5,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.destinatario}</div>
+                      {r.alertaStatus&&(
+                        <div style={{background:"#fff3cd",border:"1px solid #ffeeba",borderRadius:3,padding:"4px 8px",fontSize:11,color:"#856404",marginBottom:5,display:"flex",alignItems:"center",gap:6}}>
+                          <span>⚠</span>
+                          <span><b>Status alterado:</b> {r.alertaStatus} — notifique o cliente!</span>
+                        </div>
+                      )}
                       <div style={{display:"flex",gap:4,flexWrap:"wrap"}}><StatusBadge val={r.status}/><Chip val={r.urgencia} map={urgMap}/><Chip val={r.atendimento} map={atendMap}/></div>
                       {r.responsavel&&<div style={{fontSize:10,color:"#aaa",marginTop:5}}>Resp: {r.responsavel}</div>}
                     </div>
@@ -1050,6 +1079,19 @@ export default function App() {
                   <button onClick={()=>setSelSup(null)} style={{background:"transparent",border:"none",color:"#ccc",cursor:"pointer",fontSize:22,padding:"0 4px",lineHeight:1}}>×</button>
                 </div>
                 <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:14}}><StatusBadge val={detail.status}/><Chip val={detail.urgencia} map={urgMap}/><Chip val={detail.atendimento} map={atendMap}/><TimeOpenBadge sentAt={detail.sentAt}/></div>
+                {detail.alertaStatus&&(
+                  <div style={{background:"#fff3cd",border:"1px solid #ffeeba",borderRadius:4,padding:"10px 14px",marginBottom:14,display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12}}>
+                    <div>
+                      <div style={{fontSize:12,fontWeight:500,color:"#856404",marginBottom:4}}>⚠ Status do pedido foi atualizado — notifique o cliente!</div>
+                      <div style={{fontSize:11,color:"#856404"}}>{detail.alertaStatus}</div>
+                      <div style={{fontSize:11,color:"#999",marginTop:4}}>Use os textos prontos abaixo para contatar via WhatsApp ou Zendesk</div>
+                    </div>
+                    <button onClick={()=>upd(detail.id,{alertaStatus:null},{acao:"Alerta de status dispensado — cliente notificado"})}
+                      style={{background:"#856404",border:"none",color:"#fff",borderRadius:3,padding:"5px 12px",fontSize:11,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>
+                      ✓ Notifiquei
+                    </button>
+                  </div>
+                )}
                 {perms?.canOperate&&(
                   <div style={{display:"flex",gap:8}}>
                     {detail.atendimento==="Aberto"&&<button onClick={()=>handleInitiate(detail.id)} style={{flex:1,background:"#000",border:"none",color:"#fff",borderRadius:3,padding:"10px 0",fontSize:12,cursor:"pointer",fontWeight:500,letterSpacing:"0.08em",textTransform:"uppercase"}}>Iniciar atendimento</button>}
