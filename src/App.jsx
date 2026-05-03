@@ -6,6 +6,7 @@ const GOLD = "#C4963A", BRAND = "#000", PAGE_SIZE = 50
 const PIE_COLORS = { Alta: "#e74c3c", Média: GOLD, Baixa: "#27ae60", "—": "#aaa" }
 const SUPA_URL = "https://jdiuuhfhsiymttxllssr.supabase.co"
 const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkaXV1aGZoc2l5bXR0eGxsc3NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc3NTMyNTcsImV4cCI6MjA5MzMyOTI1N30.wNGhwh2bCF0HZSonn09S-15kEVAQGzEP1yWvRx3l_N4"
+const SUPA_SERVICE = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkaXV1aGZoc2l5bXR0eGxsc3NyIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3Nzc1MzI1NywiZXhwIjoyMDkzMzI5MjU3fQ.yjZ8VKr8YfbMBELdoKevdE1k_dd2OXUlYjUj4n2GeQw"
 const SH = { apikey: SUPA_KEY, "Content-Type": "application/json" }
 const authSH = (token) => ({ ...SH, Authorization: `Bearer ${token}` })
 
@@ -21,14 +22,14 @@ async function signIn(email, password) {
 async function signOut(token) {
   await fetch(`${SUPA_URL}/auth/v1/logout`, { method: "POST", headers: authSH(token) })
 }
-async function createUser(email, password, token) {
+async function createUser(email, password) {
   const r = await fetch(`${SUPA_URL}/auth/v1/admin/users`, {
     method: "POST",
-    headers: { ...SH, Authorization: `Bearer ${SUPA_KEY}`, apikey: SUPA_KEY },
+    headers: { apikey: SUPA_SERVICE, Authorization: `Bearer ${SUPA_SERVICE}`, "Content-Type": "application/json" },
     body: JSON.stringify({ email, password, email_confirm: true })
   })
   const data = await r.json()
-  if (!r.ok) throw new Error(data.msg || "Erro ao criar usuário")
+  if (!r.ok) throw new Error(data.msg || data.message || "Erro ao criar usuário")
   return data
 }
 
