@@ -67,19 +67,7 @@ async function createUser(email, password) {
   const r = await fetch(`${SUPA_URL}/auth/v1/admin/users`,{method:"POST",headers:{apikey:SUPA_SERVICE,Authorization:`Bearer ${SUPA_SERVICE}`,"Content-Type":"application/json"},body:JSON.stringify({email,password,email_confirm:true})})
   const d = await r.json(); if(!r.ok) throw new Error(d.msg||d.message||"Erro ao criar usuário"); return d
 }
-const CACHE_KEY = "sg_cache_v1"
-
 async function dbLoadFast(token, onPartial) {
-  // 1. Tenta carregar cache local primeiro
-  try {
-    const cached = localStorage.getItem(CACHE_KEY)
-    if (cached) {
-      const { data, ts } = JSON.parse(cached)
-      if (data?.length > 0) onPartial(data, true) // mostra cache imediatamente
-    }
-  } catch(e) {}
-
-  // 2. Carrega do banco em paralelo com chunks
   let all = [], from = 0, step = 1000
   while (true) {
     const r = await fetch(`${SUPA_URL}/rest/v1/pedidos?select=*&order=id&limit=${step}&offset=${from}`, { headers: aSH(token) })
@@ -87,19 +75,11 @@ async function dbLoadFast(token, onPartial) {
     const data = await r.json()
     const chunk = data.map(row => ({ ...row.dados, id: row.id }))
     all = [...all, ...chunk]
-
-    // Mostra parcial após primeiro chunk
-    if (from === 0 && chunk.length > 0) onPartial(all, false)
-
+    // Mostra primeiros 1000 imediatamente sem esperar o resto
+    if (from === 0 && chunk.length > 0) onPartial(all)
     if (data.length < step) break
     from += step
   }
-
-  // 3. Salva cache local para próxima visita
-  try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify({ data: all, ts: Date.now() }))
-  } catch(e) {}
-
   return all
 }
 async function dbUpsert(rows,token) {
@@ -591,11 +571,11 @@ export default function App(){
       enviadoSuporte: isEntregue(r.status)&&!r.enviadoSuporte ? false : r.enviadoSuporte,
     }))
 
-    dbLoadFast(token, (partial, fromCache) => {
-      // Mostra dados parciais/cache imediatamente — some com a tela de loading
+    dbLoadFast(token, (partial) => {
+      // Mostra primeiros 1000 registros imediatamente
       setRows(fixRows(partial))
       setLastSync(new Date())
-      if (fromCache) setLoadingData(false) // Cache: some loading na hora
+      setLoadingData(false) // Some com loading assim que tiver dados
     }).then(data => {
       if(data.length > 0) { setRows(fixRows(data)); setLastSync(new Date()) }
       setSyncStatus("idle")
@@ -635,13 +615,9 @@ export default function App(){
     if(saveTimer.current)clearTimeout(saveTimer.current)
     saveTimer.current=setTimeout(async()=>{
       setSyncStatus("saving")
-      try{
-        await dbUpsert(rows,token)
-        // Atualiza cache local após salvar
-        try { localStorage.setItem(CACHE_KEY, JSON.stringify({data:rows, ts:Date.now()})) } catch(e){}
-        setLastSync(new Date());setSyncStatus("saved");setTimeout(()=>setSyncStatus("idle"),2500)
-      }
-      catch(e){setSyncStatus("error");addToast("Erro ao salvar: "+e.message,"error",8000);setTimeout(()=>setSyncStatus("idle"),4000)}
+      try { await dbUpsert(rows,token) }
+      catch(e){setSyncStatus("error");addToast("Erro ao salvar: "+e.message,"error",8000);setTimeout(()=>setSyncStatus("idle"),4000);return}
+      setLastSync(new Date());setSyncStatus("saved");setTimeout(()=>setSyncStatus("idle"),2500)
     },1200)
   },[rows,token,addToast])
 
