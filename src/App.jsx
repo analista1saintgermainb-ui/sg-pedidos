@@ -147,7 +147,7 @@ function semMovInfo(ultimaMov) {
   if (dias >= ALERTA_DIAS) return { dias, label: `${dias}d sem atualização`, alerta: true }
   if (dias >= 3)            return { dias, label: `${dias}d sem atualização`, alerta: false }
   return null
-} const s=(status||"").toLowerCase(); return s.includes("entregue")||s.includes("finaliz")||s.includes("entrega realizada") }
+}
 function isEntregue(status){const s=(status||"").toLowerCase();return s.includes("entregue")||s.includes("finaliz")||s.includes("entrega realizada")}
 function calcMotivo(s){
   const v=(s||"").toLowerCase()
