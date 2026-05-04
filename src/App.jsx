@@ -113,7 +113,7 @@ const HEADER_MAP = {
   status:["situação","situacao","situac","status"],
   prazo:["prazo logístico","prazo logistico","prazo"],
   nf:["nº nota fiscal","no nota fiscal","nota fiscal","no nf","nf"],
-  ultimaMov:["última movimentação","ultima movimentacao","ultima movimentação","última movimentacao","ultima mov","última mov","movimentacao","movimentação"],
+  ultimaMov:["data última ocorrência","data ultima ocorrencia","data última ocorrencia","data ultima ocorrência","última ocorrência","ultima ocorrencia","última movimentação","ultima movimentacao","ultima movimentação","última movimentacao","ultima mov","última mov","movimentacao","movimentação"],
   cidade:["cidade","municipio","município"],
   uf:["uf","estado","sigla estado"],
   statusPrazo:["status prazo","entregue no prazo","no prazo","prazo status"],
@@ -591,14 +591,16 @@ export default function App(){
         motivo:    r.motivo || calcMotivo(r.status),
         atendimento:    isEntregue(r.status)&&!r.enviadoSuporte ? "Resolvido" : r.atendimento,
         enviadoSuporte: isEntregue(r.status)&&!r.enviadoSuporte ? false : r.enviadoSuporte,
-        entregueNoPrazo: (r.entregueNoPrazo!==null&&r.entregueNoPrazo!==undefined)
-          ? r.entregueNoPrazo
-          : (() => {
-              if (!isEntregue(r.status)) return null
-              const dtEntrega = parsePrazo(r.ultimaMov)
-              const dtPrazo   = parsePrazo(r.prazo)
-              if (!dtEntrega || !dtPrazo) return null
-              return dtEntrega <= dtPrazo
+        entregueNoPrazo: (() => {
+              // Sempre recalcula para entregues: Data Última Ocorrência <= Prazo Logístico
+              if (isEntregue(r.status)) {
+                const dtEntrega = parsePrazo(r.ultimaMov)
+                const dtPrazo   = parsePrazo(r.prazo)
+                if (dtEntrega && dtPrazo) return dtEntrega <= dtPrazo
+              }
+              // Mantém valor explícito (ex: coluna "Status Prazo" do CSV) se não for entregue
+              return (r.entregueNoPrazo!==null&&r.entregueNoPrazo!==undefined)
+                ? r.entregueNoPrazo : null
             })(),
       }
     })
