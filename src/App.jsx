@@ -225,8 +225,10 @@ function parseData(text){
     const spRaw = g(c, ix.statusPrazo)
     const spVal = parseStatusPrazo(spRaw)
     const dt = parsePrazo(prazo)
-    // Prioriza Status Prazo do sistema; só calcula por data se não vier preenchido
-    const noPrazo = spVal !== null ? spVal : (entregue && dt ? new Date() <= dt : null)
+    // Compara data da última ocorrência (entrega) com o prazo logístico
+    const dtEntrega = parsePrazo(g(c, ix.ultimaMov))
+    const noPrazo = spVal !== null ? spVal
+      : (entregue && dtEntrega && dt ? dtEntrega <= dt : null)
     return{id:Date.now()+i,nuvem:g(c,ix.nuvem),destinatario:g(c,ix.dest),transportadora:g(c,ix.transp),rastreio:g(c,ix.rastreio),status,prazo,nf:g(c,ix.nf),ultimaMov:g(c,ix.ultimaMov),cidade:g(c,ix.cidade),uf:g(c,ix.uf),statusPrazoRaw:spRaw,motivo:calcMotivo(status),urgencia:urg,acionar:calcAcionar(urg,status),enviadoSuporte:false,atendimento:entregue?"Resolvido":"Aberto",entregueNoPrazo:noPrazo,alertaStatus:null,obs:"",historico:entregue?[{acao:"Arquivado automaticamente — entrega concluída",ts:new Date().toLocaleString("pt-BR")}]:[],responsavel:"",sentAt:null,chamado:"",isNew:true}
   }).filter(r=>r.nuvem||r.destinatario||r.nf)
 }
@@ -591,7 +593,13 @@ export default function App(){
         enviadoSuporte: isEntregue(r.status)&&!r.enviadoSuporte ? false : r.enviadoSuporte,
         entregueNoPrazo: (r.entregueNoPrazo!==null&&r.entregueNoPrazo!==undefined)
           ? r.entregueNoPrazo
-          : (isEntregue(r.status)&&dt ? new Date()<=dt : null),
+          : (() => {
+              if (!isEntregue(r.status)) return null
+              const dtEntrega = parsePrazo(r.ultimaMov)
+              const dtPrazo   = parsePrazo(r.prazo)
+              if (!dtEntrega || !dtPrazo) return null
+              return dtEntrega <= dtPrazo
+            })(),
       }
     })
 
