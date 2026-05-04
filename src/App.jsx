@@ -212,9 +212,11 @@ function parseData(text){
     const c=line.split(sep).map(v=>v.trim().replace(/^["']|["']$/g,""))
     const status=g(c,ix.status),prazo=g(c,ix.prazo),urg=calcUrg(prazo,status)
     const entregue=isEntregue(status)
-    const dt=parsePrazo(prazo)
-    const noPrazo=entregue&&dt?new Date()<=dt:entregue&&dt?false:null
-    return{id:Date.now()+i,nuvem:g(c,ix.nuvem),destinatario:g(c,ix.dest),transportadora:g(c,ix.transp),rastreio:g(c,ix.rastreio),status,prazo,nf:g(c,ix.nf),ultimaMov:g(c,ix.ultimaMov),cidade:g(c,ix.cidade),uf:g(c,ix.uf),motivo:calcMotivo(status),urgencia:urg,acionar:calcAcionar(urg,status),enviadoSuporte:false,atendimento:entregue?"Resolvido":"Aberto",entregueNoPrazo:noPrazo,alertaStatus:null,obs:"",historico:entregue?[{acao:"Arquivado automaticamente — entrega concluída",ts:new Date().toLocaleString("pt-BR")}]:[],responsavel:"",sentAt:null,chamado:"",isNew:true}
+    const spRaw = g(c, ix.statusPrazo)
+    const spVal = parseStatusPrazo(spRaw)
+    // Prioriza Status Prazo do sistema; só calcula por data se não vier preenchido
+    const noPrazo = spVal !== null ? spVal : (entregue && dt ? new Date() <= dt : null)
+    return{id:Date.now()+i,nuvem:g(c,ix.nuvem),destinatario:g(c,ix.dest),transportadora:g(c,ix.transp),rastreio:g(c,ix.rastreio),status,prazo,nf:g(c,ix.nf),ultimaMov:g(c,ix.ultimaMov),cidade:g(c,ix.cidade),uf:g(c,ix.uf),statusPrazoRaw:spRaw,motivo:calcMotivo(status),urgencia:urg,acionar:calcAcionar(urg,status),enviadoSuporte:false,atendimento:entregue?"Resolvido":"Aberto",entregueNoPrazo:noPrazo,alertaStatus:null,obs:"",historico:entregue?[{acao:"Arquivado automaticamente — entrega concluída",ts:new Date().toLocaleString("pt-BR")}]:[],responsavel:"",sentAt:null,chamado:"",isNew:true}
   }).filter(r=>r.nuvem||r.destinatario||r.nf)
 }
 function applyQF(rows,qf){
@@ -644,7 +646,8 @@ export default function App(){
           const idx=result.findIndex(r=>r.nuvem===novo.nuvem)
           if(idx>=0){
             const alertaStatus=existing.enviadoSuporte&&norm(existing.status)!==norm(novo.status)?`Status atualizado: ${existing.status} → ${novo.status}`:existing.alertaStatus
-            result[idx]={...novo,id:existing.id,obs:existing.obs,responsavel:existing.responsavel,chamado:existing.chamado,enviadoSuporte:existing.enviadoSuporte,atendimento:existing.enviadoSuporte?existing.atendimento:novo.atendimento,alertaStatus,historico:[...existing.historico,{acao:`Status atualizado: ${existing.status} → ${novo.status}`,ts:new Date().toLocaleString("pt-BR")}],isNew:true};updated++
+            const spVal = parseStatusPrazo(novo.statusPrazoRaw)
+            result[idx]={...novo,id:existing.id,obs:existing.obs,responsavel:existing.responsavel,chamado:existing.chamado,enviadoSuporte:existing.enviadoSuporte,atendimento:existing.enviadoSuporte?existing.atendimento:novo.atendimento,entregueNoPrazo:spVal!==null?spVal:novo.entregueNoPrazo,alertaStatus,historico:[...existing.historico,{acao:`Status atualizado: ${existing.status} → ${novo.status}`,ts:new Date().toLocaleString("pt-BR")}],isNew:true};updated++
           }
         }
       }
