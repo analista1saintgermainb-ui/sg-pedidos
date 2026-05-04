@@ -516,6 +516,7 @@ export default function App(){
   const[tab,setTab]=useState(null)
   const[paste,setPaste]=useState("")
   const[importing,setImporting]=useState(false)
+  const[loadingData,setLoadingData]=useState(false)
   const[compact,setCompact]=useState(false)
   const[toasts,setToasts]=useState([])
   const[lSrch,setLSrch]=useState("");const[lSt,setLSt]=useState("Todos")
@@ -557,13 +558,15 @@ export default function App(){
   useEffect(()=>{
     if(!token)return
     setSyncStatus("loading")
+    setLoadingData(true)
     dbLoad(token).then(data=>{
       if(data.length>0){
         const fixed=data.map(r=>({...r,isNew:false,atendimento:isEntregue(r.status)&&!r.enviadoSuporte?"Resolvido":r.atendimento,enviadoSuporte:isEntregue(r.status)&&!r.enviadoSuporte?false:r.enviadoSuporte}))
         setRows(fixed);setLastSync(new Date())
       }
       setSyncStatus("idle")
-    }).catch(e=>{setSyncStatus("error");addToast("Erro ao carregar: "+e.message,"error",8000)})
+      setLoadingData(false)
+    }).catch(e=>{setSyncStatus("error");addToast("Erro ao carregar: "+e.message,"error",8000);setLoadingData(false)})
   },[token])
 
   useEffect(()=>{
