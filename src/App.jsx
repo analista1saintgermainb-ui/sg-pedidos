@@ -108,14 +108,39 @@ const HEADER_MAP = {
   status:["situação","situacao","situac","status"],
   prazo:["prazo logístico","prazo logistico","prazo"],
   nf:["nº nota fiscal","no nota fiscal","nota fiscal","no nf","nf"],
+  ultimaMov:["última movimentação","ultima movimentacao","ultima movimentação","última movimentacao","ultima mov","última mov","movimentacao","movimentação"],
 }
 const norm = s => (s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim()
 const findIdx = (hdrs,key) => hdrs.findIndex(h=>(HEADER_MAP[key]||[]).some(v=>norm(h).includes(norm(v))))
 const uniq = arr => ["Todos",...Array.from(new Set(arr.filter(Boolean).sort()))]
-const QFILTERS = [{id:"todos",label:"Todos"},{id:"urgente",label:"Urgente"},{id:"extraviados",label:"Extraviados"},{id:"devolvidos",label:"Devolvidos"},{id:"vence_hoje",label:"Vence hoje"},{id:"vencidos",label:"Vencidos"}]
+const QFILTERS = [
+  {id:"todos",label:"Todos"},
+  {id:"urgente",label:"Urgente"},
+  {id:"extraviados",label:"Extraviados"},
+  {id:"devolvidos",label:"Devolvidos"},
+  {id:"vence_hoje",label:"Vence hoje"},
+  {id:"vencidos",label:"Vencidos"},
+  {id:"parados",label:`Parados +${ALERTA_DIAS}d`},
+]
 const PAGE_SIZE = 50
 
-function isEntregue(status){ const s=(status||"").toLowerCase(); return s.includes("entregue")||s.includes("finaliz")||s.includes("entrega realizada") }
+const ALERTA_DIAS = 7
+
+function diasSemMov(ultimaMov) {
+  if (!ultimaMov) return null
+  const d = parsePrazo(ultimaMov)
+  if (!d) return null
+  const hoje = new Date(); hoje.setHours(0,0,0,0)
+  return Math.floor((hoje - d) / 86400000)
+}
+
+function semMovInfo(ultimaMov) {
+  const dias = diasSemMov(ultimaMov)
+  if (dias === null) return null
+  if (dias >= ALERTA_DIAS) return { dias, label: `${dias}d sem atualização`, alerta: true }
+  if (dias >= 3)            return { dias, label: `${dias}d sem atualização`, alerta: false }
+  return null
+} const s=(status||"").toLowerCase(); return s.includes("entregue")||s.includes("finaliz")||s.includes("entrega realizada") }
 function calcMotivo(s){
   const v=(s||"").toLowerCase()
   if(v.includes("extravia")||v.includes("perdid"))return"Objeto extraviado"
@@ -184,7 +209,7 @@ function parseData(text){
     const entregue=isEntregue(status)
     const dt=parsePrazo(prazo)
     const noPrazo=entregue&&dt?new Date()<=dt:entregue&&dt?false:null
-    return{id:Date.now()+i,nuvem:g(c,ix.nuvem),destinatario:g(c,ix.dest),transportadora:g(c,ix.transp),rastreio:g(c,ix.rastreio),status,prazo,nf:g(c,ix.nf),motivo:calcMotivo(status),urgencia:urg,acionar:calcAcionar(urg,status),enviadoSuporte:false,atendimento:entregue?"Resolvido":"Aberto",entregueNoPrazo:noPrazo,alertaStatus:null,obs:"",historico:entregue?[{acao:"Arquivado automaticamente — entrega concluída",ts:new Date().toLocaleString("pt-BR")}]:[],responsavel:"",sentAt:null,chamado:"",isNew:true}
+    return{id:Date.now()+i,nuvem:g(c,ix.nuvem),destinatario:g(c,ix.dest),transportadora:g(c,ix.transp),rastreio:g(c,ix.rastreio),status,prazo,nf:g(c,ix.nf),ultimaMov:g(c,ix.ultimaMov),cidade:g(c,ix.cidade),uf:g(c,ix.uf),motivo:calcMotivo(status),urgencia:urg,acionar:calcAcionar(urg,status),enviadoSuporte:false,atendimento:entregue?"Resolvido":"Aberto",entregueNoPrazo:noPrazo,alertaStatus:null,obs:"",historico:entregue?[{acao:"Arquivado automaticamente — entrega concluída",ts:new Date().toLocaleString("pt-BR")}]:[],responsavel:"",sentAt:null,chamado:"",isNew:true}
   }).filter(r=>r.nuvem||r.destinatario||r.nf)
 }
 function applyQF(rows,qf){
@@ -214,21 +239,42 @@ function exportCSV(rows){
   a.href=URL.createObjectURL(new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8;"}))
   a.download="saint_germain_pedidos.csv";a.click()
 }
-function getTemplate(r,ch){
-  const nome=(r.destinatario||"").split(" ")[0]||"Cliente"
-  const m=(r.motivo||"").toLowerCase()
-  const extrav=m.includes("extravia"),devolv=m.includes("devolu")||m.includes("recusa"),atraso=m.includes("atraso")
-  const det=`• Pedido: #${r.nuvem}\n• NF: ${r.nf}\n• Transportadora: ${r.transportadora}\n• Rastreio: ${r.rastreio||"—"}\n• Prazo: ${r.prazo||"—"}`
-  if(ch==="wpp"){
-    if(extrav)return`Olá, ${nome}! 😊\n\nAqui é a equipe *Saint Germain*. Sua encomenda está com status de *objeto extraviado* junto à *${r.transportadora}*. Já acionamos nossa equipe.\n\nRetornaremos em até *2 dias úteis*. Pedimos desculpas! 🙏`
-    if(devolv)return`Olá, ${nome}! 😊\n\nAqui é a equipe *Saint Germain*. Sua encomenda foi *devolvida* ao nosso CD. Poderia confirmar o endereço para novo envio sem custo? 📦`
-    if(atraso)return`Olá, ${nome}! 😊\n\nAqui é a equipe *Saint Germain*. Identificamos um atraso no pedido *#${r.nuvem}* pela *${r.transportadora}*. Estamos acompanhando! 🙏`
-    return`Olá, ${nome}! 😊\n\nAqui é a equipe *Saint Germain*. Atualizando sobre o pedido *#${r.nuvem}*.\n\nStatus: *${r.status}*${r.prazo?`\nPrazo: *${r.prazo}*`:""}\n\nQualquer dúvida é só chamar! ✨`
-  }else{
-    if(extrav)return`Assunto: Pedido #${r.nuvem} — Objeto Extraviado\n\nOlá, ${r.destinatario},\n\n${det}\n\nNossa equipe está apurando com a transportadora. Retornamos em até 2 dias úteis.\n\nAtenciosamente,\nEquipe Saint Germain`
-    if(devolv)return`Assunto: Pedido #${r.nuvem} — Devolução\n\nOlá, ${r.destinatario},\n\nSua encomenda retornou ao CD.\n\n${det}\n\nConfirme seu endereço para novo envio sem custo.\n\nAtenciosamente,\nEquipe Saint Germain`
-    if(atraso)return`Assunto: Pedido #${r.nuvem} — Atraso\n\nOlá, ${r.destinatario},\n\n${det}\n\nEstamos acompanhando junto à transportadora.\n\nAtenciosamente,\nEquipe Saint Germain`
-    return`Assunto: Pedido #${r.nuvem} — Atualização\n\nOlá, ${r.destinatario},\n\n${det}\nStatus: ${r.status}\n\nQualquer dúvida, responda este chamado.\n\nAtenciosamente,\nEquipe Saint Germain`
+function getTemplate(r, ch, nomeAtendente) {
+  const nome  = (r.destinatario||"").split(" ")[0] || "Cliente"
+  const atend = (nomeAtendente||"").split(" ")[0]  || "Time SG"
+  const m     = (r.motivo||"").toLowerCase()
+  const extrav = m.includes("extravia")
+  const devolv = m.includes("devolu") || m.includes("recusa")
+  const atraso = m.includes("atraso")
+  const parado = diasSemMov(r.ultimaMov) !== null && diasSemMov(r.ultimaMov) >= ALERTA_DIAS
+  const linkRastreio = r.rastreio
+    ? `https://saintgermain.rastreio.estoca.com.br/tracking?code=${r.rastreio}`
+    : null
+
+  if (ch === "wpp") {
+    if (extrav) return `Olá, ${nome}! Tudo bem? Me chamo ${atend} e faço parte do time de encantamento da SG 🤍\n\nEstou entrando em contato pois identificamos uma ocorrência no seu pedido *#${r.nuvem}*.\n\nSua encomenda está com o status de *objeto extraviado* junto à transportadora *${r.transportadora}*. Já acionamos nossa equipe para apurar o caso com urgência.\n\nRetornaremos com uma atualização em até *2 dias úteis*. Pedimos sinceras desculpas pelo transtorno! 🙏\n\nQualquer dúvida estamos à disposição 🤍\n${atend} — Time de Encantamento SG`
+
+    if (devolv) return `Olá, ${nome}! Tudo bem? Me chamo ${atend} e faço parte do time de encantamento da SG 🤍\n\nEstou entrando em contato sobre seu pedido *#${r.nuvem}*.\n\nIdentificamos que sua encomenda foi *devolvida* ao nosso centro de distribuição após tentativas de entrega sem sucesso. 😔\n\nPara realizarmos um novo envio sem nenhum custo adicional, poderia confirmar seu endereço de entrega completo respondendo esta mensagem?\n\nEstamos aqui para resolver isso da melhor forma para você 🤍\n${atend} — Time de Encantamento SG`
+
+    if (atraso) return `Olá, ${nome}! Tudo bem? Me chamo ${atend} e faço parte do time de encantamento da SG 🤍\n\nEstou entrando em contato sobre seu pedido *#${r.nuvem}*.\n\nIdentificamos um atraso na entrega pela transportadora *${r.transportadora}*. O prazo previsto era *${r.prazo||"—"}* e já estamos acompanhando de perto junto à transportadora.\n\nAssim que tivermos uma atualização, te avisamos imediatamente! Pedimos desculpas pelo inconveniente 🙏\n\nQualquer dúvida estamos à disposição 🤍\n${atend} — Time de Encantamento SG`
+
+    if (parado) return `Olá, ${nome}! Tudo bem? Me chamo ${atend} e faço parte do time de encantamento da SG 🤍\n\nEstou entrando em contato sobre seu pedido *#${r.nuvem}*.\n\nPercebemos que seu pedido está *em trânsito* com a transportadora *${r.transportadora}*, mas sem novas atualizações de rastreio nos últimos dias. Já estamos apurando a situação com a transportadora.\n\nRetornaremos em breve com uma atualização! Pedimos desculpas pela espera 🙏\n\nQualquer dúvida estamos à disposição 🤍\n${atend} — Time de Encantamento SG`
+
+    return `Olá, ${nome}! Tudo bem? Me chamo ${atend} e faço parte do time de encantamento da SG 🤍\n\nVocê pode rastrear seu pedido *#${r.nuvem}* diretamente neste link:\n${linkRastreio||r.rastreio||"—"}\n\nStatus atual: *${r.status}*${r.prazo ? `\nPrazo previsto: *${r.prazo}*` : ""}\n\nSe tiver qualquer dúvida ou encontrar algum desafio, estamos à disposição para ajudar você! 🤍\n${atend} — Time de Encantamento SG`
+
+  } else {
+    const assinatura = `Atenciosamente,\n${atend}\nTime de Encantamento — Saint Germain`
+    const det = `• Pedido: #${r.nuvem}\n• NF: ${r.nf}\n• Transportadora: ${r.transportadora}\n• Rastreio: ${r.rastreio||"—"}\n• Prazo previsto: ${r.prazo||"—"}`
+
+    if (extrav) return `Assunto: Pedido #${r.nuvem} — Objeto Extraviado\n\nOlá, ${r.destinatario}! Tudo bem?\n\nMe chamo ${atend} e faço parte do time de encantamento da SG 🤍\n\nEntramos em contato para informar sobre uma ocorrência identificada no seu pedido.\n\n${det}\nStatus: Objeto extraviado\n\nJá acionamos nossa equipe de logística para apurar o caso com urgência junto à transportadora. Retornaremos com uma solução em até 2 dias úteis.\n\nPedimos sinceras desculpas pelo transtorno e agradecemos a sua compreensão.\n\n${assinatura}`
+
+    if (devolv) return `Assunto: Pedido #${r.nuvem} — Devolução de Encomenda\n\nOlá, ${r.destinatario}! Tudo bem?\n\nMe chamo ${atend} e faço parte do time de encantamento da SG 🤍\n\nEntramos em contato para informar que sua encomenda retornou ao nosso centro de distribuição após tentativas de entrega sem sucesso.\n\n${det}\n\nPara realizarmos um novo envio sem nenhum custo adicional, pedimos que confirme seu endereço de entrega completo respondendo a este chamado.\n\nEstamos à disposição para resolver da melhor forma para você 🤍\n\n${assinatura}`
+
+    if (atraso) return `Assunto: Pedido #${r.nuvem} — Atraso na Entrega\n\nOlá, ${r.destinatario}! Tudo bem?\n\nMe chamo ${atend} e faço parte do time de encantamento da SG 🤍\n\nEntramos em contato para informar que identificamos um atraso na entrega do seu pedido.\n\n${det}\n\nJá estamos acompanhando o caso junto à transportadora e te manteremos informado(a) sobre qualquer atualização.\n\nPedimos desculpas pelo inconveniente e agradecemos a sua paciência 🙏\n\n${assinatura}`
+
+    if (parado) return `Assunto: Pedido #${r.nuvem} — Atualização de Rastreio\n\nOlá, ${r.destinatario}! Tudo bem?\n\nMe chamo ${atend} e faço parte do time de encantamento da SG 🤍\n\nIdentificamos que seu pedido está em trânsito, porém sem novas atualizações de rastreio nos últimos dias. Já estamos apurando a situação com a transportadora.\n\n${det}\n\nRetornaremos em breve com uma atualização. Pedimos desculpas pela espera 🙏\n\n${assinatura}`
+
+    return `Assunto: Pedido #${r.nuvem} — Rastreio\n\nOlá, ${r.destinatario}! Tudo bem?\n\nMe chamo ${atend} e faço parte do time de encantamento da SG 🤍\n\nVocê pode rastrear seu pedido diretamente neste link:\n${linkRastreio||r.rastreio||"—"}\n\n${det}\nStatus atual: ${r.status}\n\nSe tiver qualquer dúvida ou encontrar algum desafio, estamos à disposição para ajudar você! 🤍\n\n${assinatura}`
   }
 }
 
@@ -275,7 +321,16 @@ function SlaCell({prazo}){
   </div>
 }
 
-function TimeOpenBadge({sentAt}){
+function SemMovBadge({ultimaMov}){
+  const info = semMovInfo(ultimaMov)
+  if (!info) return <span style={{fontSize:11,color:C.text4}}>{ultimaMov||"—"}</span>
+  return <div>
+    <div style={{fontSize:10,color:C.text3,marginBottom:2}}>{ultimaMov}</div>
+    <span style={{background:info.alerta?C.redSoft:C.amberSoft,color:info.alerta?C.red:C.amber,border:`1px solid ${info.alerta?C.redBorder:C.amberBorder}`,borderRadius:10,padding:"1px 7px",fontSize:10,fontWeight:600,whiteSpace:"nowrap"}}>
+      {info.alerta?"⚠ ":""}{info.label}
+    </span>
+  </div>
+}
   const info=timeOpen(sentAt);if(!info)return null
   return<span style={{background:info.alert?C.redSoft:C.amberSoft,color:info.alert?C.red:C.amber,border:`1px solid ${info.alert?C.redBorder:C.amberBorder}`,borderRadius:10,padding:"2px 8px",fontSize:10,fontWeight:500}}>{info.label}</span>
 }
@@ -455,6 +510,7 @@ const SAMPLE=`Identificador Ecommerce;Destinatário Nome;Estratégia de Frete;Ra
 export default function App(){
   const[session,setSession]=useState(null)
   const[perfil,setPerfil]=useState(null)
+  const[nomeAtendente,setNomeAtendente]=useState("")
   const[loadingPerfil,setLoadingPerfil]=useState(false)
   const[rows,setRows]=useState([])
   const[tab,setTab]=useState(null)
@@ -490,6 +546,7 @@ export default function App(){
     try{
       const r=await fetch(`${SUPA_URL}/rest/v1/usuarios?id=eq.${data.user.id}&select=*`,{headers:aSH(data.access_token)})
       const arr=await r.json();const p=arr[0]?.perfil||"leitura"
+      setNomeAtendente(arr[0]?.nome||data.user?.email||"")
       setPerfil(p);setTab(PERMS[p].tabs[0])
     }catch(e){setPerfil("leitura");setTab("dashboard")}
     setLoadingPerfil(false)
@@ -646,7 +703,7 @@ export default function App(){
   const vencidos=rows.filter(r=>{const d=parsePrazo(r.prazo);if(!d)return false;return d<hoje&&!isEntregue(r.status)}).length
   const emRisco=rows.filter(r=>{const d=parsePrazo(r.prazo);if(!d)return false;const diff=Math.ceil((d-hoje)/86400000);return diff>=0&&diff<=3&&!isEntregue(r.status)}).length
 
-  const trStats={}
+  const parados = baseLog.filter(r=>{ const d=diasSemMov(r.ultimaMov); return d!==null&&d>=ALERTA_DIAS }).length
   rows.forEach(r=>{
     if(!r.transportadora)return
     if(!trStats[r.transportadora])trStats[r.transportadora]={total:0,entregues:0,noPrazo:0,foraPrazo:0,vencidos:0}
@@ -656,6 +713,16 @@ export default function App(){
   })
   const trData=Object.entries(trStats).map(([name,s])=>({name,total:s.total,entregues:s.entregues,noPrazo:s.noPrazo,foraPrazo:s.foraPrazo,vencidos:s.vencidos,pct:s.entregues>0?Math.round((s.noPrazo/s.entregues)*100):0})).sort((a,b)=>b.total-a.total).slice(0,8)
   const trBarData=trData.map(t=>({name:t.name,"No prazo":t.noPrazo,"Fora prazo":t.foraPrazo,"Vencidos":t.vencidos}))
+
+  // Stats por UF
+  const ufStats={}
+  rows.forEach(r=>{
+    const uf=(r.uf||"").toUpperCase().trim(); if(!uf||uf.length>3)return
+    if(!ufStats[uf])ufStats[uf]={total:0,entregues:0,noPrazo:0,tempoTotal:0,tempoCount:0}
+    const s=ufStats[uf]; s.total++
+    if(isEntregue(r.status)){s.entregues++; if(r.entregueNoPrazo===true)s.noPrazo++}
+  })
+  const ufData=Object.entries(ufStats).map(([uf,s])=>({uf,total:s.total,entregues:s.entregues,noPrazo:s.noPrazo,pct:s.entregues>0?Math.round((s.noPrazo/s.entregues)*100):0})).sort((a,b)=>b.total-a.total).slice(0,15)
   const urgData=["Alta","Média","Baixa"].map(u=>({name:u,value:baseLog.filter(r=>r.urgencia===u).length,fill:urgStyles[u].dot})).filter(d=>d.value>0)
   const statusMap={};rows.filter(r=>!isEntregue(r.status)).forEach(r=>{if(r.status)statusMap[r.status]=(statusMap[r.status]||0)+1})
   const statusData=Object.entries(statusMap).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([name,value])=>({name,value}))
@@ -775,7 +842,13 @@ export default function App(){
           <div style={{fontSize:22,fontWeight:500,color:C.text1,fontFamily:"'Cormorant Garamond',serif",letterSpacing:"0.03em"}}>Dashboard Operacional</div>
         </div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:12,marginBottom:20}}>
-          {[{label:"Total de pedidos",val:rows.length,sub:"na base de dados"},{label:"Em logística",val:st.log,sub:`${st.acionar} acionam suporte`},{label:"No suporte",val:ss.total,sub:`${ss.abertos} abertos`,accent:ss.abertos>0},{label:"Vencidos em aberto",val:vencidos,sub:"prazo expirado",accent:vencidos>0},{label:"Entrega no prazo",val:`${pctNoPrazo}%`,sub:`${noPrazo} de ${entregues.length} entregues`}].map(k=><KpiCard key={k.label} {...k}/>)}
+          {[
+            {label:"Total de pedidos",      val:rows.length,  sub:"na base de dados"},
+            {label:"Em logística",          val:st.log,       sub:`${st.acionar} acionam suporte`},
+            {label:"No suporte",            val:ss.total,     sub:`${ss.abertos} abertos`, accent:ss.abertos>0},
+            {label:`Parados +${ALERTA_DIAS}d`, val:parados,   sub:"sem movimentação",      accent:parados>0},
+            {label:"Entrega no prazo",      val:`${pctNoPrazo}%`, sub:`${noPrazo} de ${entregues.length} entregues`},
+          ].map(k=><KpiCard key={k.label} {...k}/>)}
         </div>
         {rows.length===0?<div style={{textAlign:"center",padding:64,color:C.text4}}>Importe dados para visualizar os gráficos</div>:(
           <div>
@@ -809,6 +882,30 @@ export default function App(){
                 </div>
               </div>
             </div>
+            {/* Ranking UF */}
+            {ufData.length>0&&(
+              <div style={{background:C.white,borderRadius:14,border:`1px solid ${C.border}`,overflow:"hidden",boxShadow:shadow.sm,marginBottom:16}}>
+                <div style={{padding:"18px 24px",borderBottom:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                  <div style={{fontSize:9,fontWeight:500,color:C.text3,letterSpacing:"0.12em",textTransform:"uppercase"}}>Desempenho por estado (UF)</div>
+                  <div style={{fontSize:10,color:C.text4}}>{ufData.length} estados com pedidos</div>
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:0}}>
+                  {ufData.map((u,i)=>(
+                    <div key={u.uf} style={{padding:"14px 16px",borderRight:i%5!==4?`1px solid ${C.border}`:"none",borderBottom:i<ufData.length-5?`1px solid ${C.border}`:"none",background:i%2===0?C.white:C.cream}}>
+                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
+                        <span style={{fontSize:14,fontWeight:700,color:C.text1,fontFamily:"'Cormorant Garamond',serif",letterSpacing:"0.05em"}}>{u.uf}</span>
+                        <span style={{fontSize:10,fontWeight:600,color:u.pct>=80?C.green:u.pct>=60?C.amber:u.pct>0?C.red:C.text4}}>{u.pct>0?`${u.pct}%`:"—"}</span>
+                      </div>
+                      <div style={{fontSize:10,color:C.text3,marginBottom:4}}>{u.total} pedidos</div>
+                      <div style={{height:4,background:C.creamDark,borderRadius:2,overflow:"hidden"}}>
+                        <div style={{height:"100%",width:`${u.pct}%`,background:u.pct>=80?C.green:u.pct>=60?C.amber:C.red,borderRadius:2}}/>
+                      </div>
+                      <div style={{fontSize:9,color:C.text4,marginTop:4}}>{u.noPrazo} no prazo · {u.entregues} entregues</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             {/* Ranking transportadoras */}
             <div style={{background:C.white,borderRadius:14,border:`1px solid ${C.border}`,overflow:"hidden",boxShadow:shadow.sm,marginBottom:16}}>
               <div style={{padding:"18px 24px",borderBottom:`1px solid ${C.border}`}}>
@@ -895,7 +992,7 @@ export default function App(){
         {/* Table */}
         <div style={{overflowX:"auto",overflowY:"auto",maxHeight:"54vh",borderRadius:12,border:`1px solid ${C.border}`,boxShadow:shadow.sm}}>
           <table style={{width:"100%",borderCollapse:"collapse",fontSize:compact?11:12,tableLayout:"fixed",minWidth:1040}}>
-            <colgroup><col style={{width:36}}/><col style={{width:80}}/><col style={{width:122}}/><col style={{width:98}}/><col style={{width:110}}/><col style={{width:98}}/><col style={{width:108}}/><col style={{width:68}}/><col style={{width:118}}/><col style={{width:66}}/><col style={{width:76}}/><col style={{width:100}}/><col style={{width:36}}/></colgroup>
+                          <colgroup><col style={{width:36}}/><col style={{width:76}}/><col style={{width:114}}/><col style={{width:94}}/><col style={{width:104}}/><col style={{width:94}}/><col style={{width:100}}/><col style={{width:64}}/><col style={{width:108}}/><col style={{width:62}}/><col style={{width:72}}/><col style={{width:106}}/><col style={{width:94}}/><col style={{width:36}}/></colgroup>
             <thead>
               <tr>
                 <th style={THF}>{perms?.canSendSupport&&<input type="checkbox" onChange={e=>e.target.checked?setSelIds(new Set(pagedLog.map(r=>r.id))):clearSel()} checked={selIds.size>0&&pagedLog.every(r=>selIds.has(r.id))} style={{cursor:"pointer",accentColor:C.gold}}/>}</th>
@@ -920,6 +1017,7 @@ export default function App(){
                   <td style={{padding:`${pd}px 14px`,color:C.text3,fontSize:10,overflow:"hidden",textOverflow:"ellipsis"}} title={r.motivo}>{r.motivo}</td>
                   <td style={{padding:`${pd}px 14px`}}><Chip val={r.urgencia} styles={urgStyles}/></td>
                   <td style={{padding:`${pd}px 14px`}}><Chip val={r.acionar} styles={acionStyles}/></td>
+                  <td style={{padding:`${pd}px 14px`}}><SemMovBadge ultimaMov={r.ultimaMov}/></td>
                   <td style={{padding:`${pd}px 14px`}}>{perms?.canSendSupport&&(
                     <button onClick={()=>upd(r.id,{enviadoSuporte:true,atendimento:"Aberto",sentAt:new Date().toISOString()},{acao:"Enviado ao suporte"})} style={{background:C.cream,border:`1px solid ${C.border}`,color:C.text2,borderRadius:6,padding:"4px 10px",fontSize:10,cursor:"pointer",width:"100%",fontWeight:500,transition:"all .15s"}}>
                       Enviar →
