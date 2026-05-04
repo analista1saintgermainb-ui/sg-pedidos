@@ -114,10 +114,14 @@ const HEADER_MAP = {
   prazo:["prazo logístico","prazo logistico","prazo"],
   nf:["nº nota fiscal","no nota fiscal","nota fiscal","no nf","nf"],
   ultimaMov:["última movimentação","ultima movimentacao","ultima movimentação","última movimentacao","ultima mov","última mov","movimentacao","movimentação"],
+  cidade:["cidade","municipio","município"],
+  uf:["uf","estado","sigla estado"],
+  statusPrazo:["status prazo","entregue no prazo","no prazo","prazo status"],
 }
 const norm = s => (s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim()
 const findIdx = (hdrs,key) => hdrs.findIndex(h=>(HEADER_MAP[key]||[]).some(v=>norm(h).includes(norm(v))))
 const uniq = arr => ["Todos",...Array.from(new Set(arr.filter(Boolean).sort()))]
+const ALERTA_DIAS = 7
 const QFILTERS = [
   {id:"todos",label:"Todos"},
   {id:"urgente",label:"Urgente"},
@@ -128,8 +132,6 @@ const QFILTERS = [
   {id:"parados",label:`Parados +${ALERTA_DIAS}d`},
 ]
 const PAGE_SIZE = 50
-
-const ALERTA_DIAS = 7
 
 function diasSemMov(ultimaMov) {
   if (!ultimaMov) return null
@@ -146,6 +148,7 @@ function semMovInfo(ultimaMov) {
   if (dias >= 3)            return { dias, label: `${dias}d sem atualização`, alerta: false }
   return null
 } const s=(status||"").toLowerCase(); return s.includes("entregue")||s.includes("finaliz")||s.includes("entrega realizada") }
+function isEntregue(status){const s=(status||"").toLowerCase();return s.includes("entregue")||s.includes("finaliz")||s.includes("entrega realizada")}
 function calcMotivo(s){
   const v=(s||"").toLowerCase()
   if(v.includes("extravia")||v.includes("perdid"))return"Objeto extraviado"
@@ -190,6 +193,13 @@ function slaInfo(prazo){
   if(diff<=3) return{label:`${diff}d restantes`,      color:C.amber,bg:C.amberSoft,bd:C.amberBorder}
   return          {label:`${diff}d restantes`,         color:C.green,bg:C.greenSoft,bd:C.greenBorder}
 }
+function parseStatusPrazo(v){
+  if(!v)return null
+  const s=(v||"").toLowerCase().trim()
+  if(s==="sim"||s==="s"||s==="true"||s==="1")return true
+  if(s==="não"||s==="nao"||s==="n"||s==="false"||s==="0")return false
+  return null
+}
 function timeOpen(sentAt){
   if(!sentAt)return null
   const ms=Date.now()-new Date(sentAt).getTime()
@@ -206,7 +216,7 @@ function parseData(text){
   const isHdr=first.some(h=>["nuvem","destinat","identificador","ecommerce","rastreio","situac","status","frete"].some(k=>norm(h).includes(k)))
   const hdrs=isHdr?first:[]
   const data=isHdr?lines.slice(1):lines
-  const ix={nuvem:isHdr?findIdx(hdrs,"nuvem"):0,dest:isHdr?findIdx(hdrs,"destinatario"):1,transp:isHdr?findIdx(hdrs,"transportadora"):2,rastreio:isHdr?findIdx(hdrs,"rastreio"):3,status:isHdr?findIdx(hdrs,"status"):4,prazo:isHdr?findIdx(hdrs,"prazo"):5,nf:isHdr?findIdx(hdrs,"nf"):6}
+  const ix={nuvem:isHdr?findIdx(hdrs,"nuvem"):0,dest:isHdr?findIdx(hdrs,"destinatario"):1,transp:isHdr?findIdx(hdrs,"transportadora"):2,rastreio:isHdr?findIdx(hdrs,"rastreio"):3,status:isHdr?findIdx(hdrs,"status"):4,prazo:isHdr?findIdx(hdrs,"prazo"):5,nf:isHdr?findIdx(hdrs,"nf"):6,ultimaMov:isHdr?findIdx(hdrs,"ultimaMov"):-1,cidade:isHdr?findIdx(hdrs,"cidade"):-1,uf:isHdr?findIdx(hdrs,"uf"):-1,statusPrazo:isHdr?findIdx(hdrs,"statusPrazo"):-1}
   const g=(c,i)=>i>=0&&i<c.length?c[i]:""
   return data.map((line,i)=>{
     const c=line.split(sep).map(v=>v.trim().replace(/^["']|["']$/g,""))
@@ -214,6 +224,7 @@ function parseData(text){
     const entregue=isEntregue(status)
     const spRaw = g(c, ix.statusPrazo)
     const spVal = parseStatusPrazo(spRaw)
+    const dt = parsePrazo(prazo)
     // Prioriza Status Prazo do sistema; só calcula por data se não vier preenchido
     const noPrazo = spVal !== null ? spVal : (entregue && dt ? new Date() <= dt : null)
     return{id:Date.now()+i,nuvem:g(c,ix.nuvem),destinatario:g(c,ix.dest),transportadora:g(c,ix.transp),rastreio:g(c,ix.rastreio),status,prazo,nf:g(c,ix.nf),ultimaMov:g(c,ix.ultimaMov),cidade:g(c,ix.cidade),uf:g(c,ix.uf),statusPrazoRaw:spRaw,motivo:calcMotivo(status),urgencia:urg,acionar:calcAcionar(urg,status),enviadoSuporte:false,atendimento:entregue?"Resolvido":"Aberto",entregueNoPrazo:noPrazo,alertaStatus:null,obs:"",historico:entregue?[{acao:"Arquivado automaticamente — entrega concluída",ts:new Date().toLocaleString("pt-BR")}]:[],responsavel:"",sentAt:null,chamado:"",isNew:true}
@@ -314,7 +325,7 @@ function StatusBadge({val}){
   let bg=C.creamDark,color=C.text3,bd=C.border
   if(s.includes("entregue")||s.includes("finaliz")){bg=C.greenSoft;color=C.green;bd=C.greenBorder}
   else if(s.includes("trânsito")||s.includes("transito")){bg=C.blueSoft;color=C.blue;bd=C.blueBorder}
-  else if(s.includes("saiu")){bg:"#EBF5FB";color=C.blue;bd=C.blueBorder}
+  else if(s.includes("saiu")){bg=C.blueSoft;color=C.blue;bd=C.blueBorder}
   else if(s.includes("extravia")){bg=C.redSoft;color=C.red;bd=C.redBorder}
   else if(s.includes("devolv")){bg=C.amberSoft;color=C.amber;bd=C.amberBorder}
   return<span style={{background:bg,color,border:`1px solid ${bd}`,borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:500,whiteSpace:"nowrap",letterSpacing:"0.02em"}}>{val||"—"}</span>
@@ -338,6 +349,7 @@ function SemMovBadge({ultimaMov}){
     </span>
   </div>
 }
+function TimeOpenBadge({sentAt}){
   const info=timeOpen(sentAt);if(!info)return null
   return<span style={{background:info.alert?C.redSoft:C.amberSoft,color:info.alert?C.red:C.amber,border:`1px solid ${info.alert?C.redBorder:C.amberBorder}`,borderRadius:10,padding:"2px 8px",fontSize:10,fontWeight:500}}>{info.label}</span>
 }
@@ -588,14 +600,13 @@ export default function App(){
       setLoadingData(false)
     })
   },[token])
-  },[token])
 
   useEffect(()=>{
     if(!token)return
     const poll=async()=>{
       setCountdown(10)
       try{
-        const remote=await dbLoad(token)
+        const remote=await dbLoadFast(token,()=>{})
         if(remote.length>0){
           let nc=0
           setRows(prev=>{
@@ -706,7 +717,7 @@ export default function App(){
   const qCounts =Object.fromEntries(QFILTERS.map(f=>[f.id,applyQF(baseLog,f.id).length]))
   const filteredLog=applySortRows(applyQF(baseLog,qf).filter(r=>{
     const q=lSrch.toLowerCase()
-    return(!q||[r.nuvem,r.destinatario,r.transportadora,r.rastreio,r.status,r.nf,r.motivo].some(v=>v.toLowerCase().includes(q)))
+    return(!q||[r.nuvem,r.destinatario,r.transportadora,r.rastreio,r.status,r.nf,r.motivo].some(v=>(v||"").toLowerCase().includes(q)))
       &&(lSt==="Todos"||r.status===lSt)&&(lTr==="Todos"||r.transportadora===lTr)
       &&(lUrg==="Todos"||r.urgencia===lUrg)&&(lAc==="Todos"||r.acionar===lAc)
   }),sortCol,sortDir)
@@ -730,6 +741,7 @@ export default function App(){
   const emRisco=rows.filter(r=>{const d=parsePrazo(r.prazo);if(!d)return false;const diff=Math.ceil((d-hoje)/86400000);return diff>=0&&diff<=3&&!isEntregue(r.status)}).length
 
   const parados = baseLog.filter(r=>{ const d=diasSemMov(r.ultimaMov); return d!==null&&d>=ALERTA_DIAS }).length
+  const trStats={}
   rows.forEach(r=>{
     if(!r.transportadora)return
     if(!trStats[r.transportadora])trStats[r.transportadora]={total:0,entregues:0,noPrazo:0,foraPrazo:0,vencidos:0}
