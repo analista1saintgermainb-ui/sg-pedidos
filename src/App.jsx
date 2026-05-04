@@ -331,7 +331,6 @@ function LoginScreen({onLogin}){
     <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:400,height:400,borderRadius:"50%",border:`1px solid ${C.gold}12`,pointerEvents:"none"}}/>
 
     <div style={{textAlign:"center",marginBottom:48,position:"relative"}}>
-      <div style={{fontSize:11,letterSpacing:"0.5em",color:C.gold,textTransform:"uppercase",marginBottom:12,fontWeight:300}}>Maison</div>
       <div style={{fontSize:36,letterSpacing:"0.28em",color:C.white,textTransform:"uppercase",fontFamily:"'Cormorant Garamond',serif",fontWeight:500,lineHeight:1}}>Saint Germain</div>
       <div style={{width:48,height:"1px",background:C.gold,margin:"16px auto"}}/>
       <div style={{fontSize:9,letterSpacing:"0.35em",color:`${C.gold}99`,textTransform:"uppercase"}}>Central de Pedidos</div>
