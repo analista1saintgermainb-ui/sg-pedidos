@@ -579,11 +579,21 @@ export default function App(){
     setSyncStatus("loading")
     setLoadingData(true)
 
-    const fixRows = data => data.map(r=>({
-      ...r, isNew:false,
-      atendimento: isEntregue(r.status)&&!r.enviadoSuporte ? "Resolvido" : r.atendimento,
-      enviadoSuporte: isEntregue(r.status)&&!r.enviadoSuporte ? false : r.enviadoSuporte,
-    }))
+    const fixRows = data => data.map(r=>{
+      const urg = calcUrg(r.prazo, r.status)
+      const dt  = parsePrazo(r.prazo)
+      return {
+        ...r, isNew:false,
+        urgencia:  urg,
+        acionar:   calcAcionar(urg, r.status),
+        motivo:    r.motivo || calcMotivo(r.status),
+        atendimento:    isEntregue(r.status)&&!r.enviadoSuporte ? "Resolvido" : r.atendimento,
+        enviadoSuporte: isEntregue(r.status)&&!r.enviadoSuporte ? false : r.enviadoSuporte,
+        entregueNoPrazo: (r.entregueNoPrazo!==null&&r.entregueNoPrazo!==undefined)
+          ? r.entregueNoPrazo
+          : (isEntregue(r.status)&&dt ? new Date()<=dt : null),
+      }
+    })
 
     dbLoadFast(token, (partial) => {
       // Mostra primeiros 1000 registros imediatamente
@@ -742,8 +752,10 @@ export default function App(){
 
   const parados = baseLog.filter(r=>{ const d=diasSemMov(r.ultimaMov); return d!==null&&d>=ALERTA_DIAS }).length
   const trStats={}
+  const UF_BR=/^[A-Z]{2}$/
   rows.forEach(r=>{
     if(!r.transportadora)return
+    if(UF_BR.test(r.transportadora.trim()))return // ignora siglas de UF (ex: "SP", "RJ")
     if(!trStats[r.transportadora])trStats[r.transportadora]={total:0,entregues:0,noPrazo:0,foraPrazo:0,vencidos:0}
     const s=trStats[r.transportadora];s.total++
     if(isEntregue(r.status)){s.entregues++;if(r.entregueNoPrazo===true)s.noPrazo++;if(r.entregueNoPrazo===false)s.foraPrazo++}
