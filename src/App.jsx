@@ -120,8 +120,33 @@ const HEADER_MAP = {
   statusPrazo:  ["status prazo","statusprazo","prazo status"],
   dataCriacao:  ["data criação envio","data criacao envio","data de criacao","data criacao","data envio"],
 }
-const norm   = s => (s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim()
-const findIdx = (hdrs,key) => hdrs.findIndex(h=>(HEADER_MAP[key]||[]).some(v=>norm(h).includes(norm(v))))
+const norm    = s => (s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim()
+// findIdx: tenta aliases multi-palavra primeiro (mais específicos), depois exato, depois contains.
+// Isso evita que "destinatario" case com "Destinatário CEP" antes de "Destinatário Nome".
+const findIdx = (hdrs, key) => {
+  const aliases = HEADER_MAP[key] || []
+  const nhdrs   = hdrs.map(norm)
+  const multi   = aliases.filter(v => norm(v).includes(" "))
+  const single  = aliases.filter(v => !norm(v).includes(" "))
+  // 1ª passagem: aliases multi-palavra (exact ou contains) — máxima especificidade
+  for (const v of multi) {
+    const nv = norm(v)
+    const i  = nhdrs.findIndex(h => h === nv || h.includes(nv))
+    if (i >= 0) return i
+  }
+  // 2ª passagem: aliases de palavra única — exact match
+  for (const v of single) {
+    const i = nhdrs.findIndex(h => h === norm(v))
+    if (i >= 0) return i
+  }
+  // 3ª passagem: aliases de palavra única — contains (último recurso)
+  for (const v of single) {
+    const nv = norm(v)
+    const i  = nhdrs.findIndex(h => h.includes(nv))
+    if (i >= 0) return i
+  }
+  return -1
+}
 const uniq   = arr => ["Todos",...Array.from(new Set(arr.filter(Boolean).sort()))]
 
 // BUG FIX #1 (cont): QFILTERS agora pode referenciar ALERTA_DIAS sem erro
@@ -379,7 +404,45 @@ function classificarProblema(r) {
   return "OK"
 }
 
-// Configuração visual por tipo de problema
+// Links das transportadoras — abre direto no site ao acionar
+const TRANSP_LINKS = {
+  "correios":          "https://rastreamento.correios.com.br",
+  "jadlog":            "https://www.jadlog.com.br/siteInstitucional/tracking.jad",
+  "loggi":             "https://www.loggi.com/rastreador/",
+  "total express":     "https://www.totalexpress.com.br/rastreio",
+  "sequoia":           "https://rastreamento.sequoialog.com.br",
+  "azul cargo":        "https://www.azulcargo.com.br/rastreio",
+  "latam cargo":       "https://www.latamcargo.com",
+  "jamef":             "https://www.jamef.com.br/rastreamento",
+  "fedex":             "https://www.fedex.com/pt-br/tracking.html",
+  "ups":               "https://www.ups.com/track",
+  "dhl":               "https://www.dhl.com/br-pt/home/tracking.html",
+  "tnt":               "https://www.tnt.com/express/pt_br/site/tracking.html",
+  "braspress":         "https://www.braspress.com/rastreio",
+  "rodonaves":         "https://www.rodonaves.com.br/rastreie-sua-carga",
+  "gollog":            "https://gollog.com.br/rastreio",
+  "rappi":             "https://www.rappi.com.br",
+  "ifood":             "https://www.ifood.com.br",
+  "kangu":             "https://kangu.com.br",
+  "shein":             "https://www.shein.com.br",
+  "shopee":            "https://shopee.com.br",
+  "melhor envio":      "https://melhorenvio.com.br/rastreio",
+  "frenet":            "https://www.frenet.com.br",
+  "mandae":            "https://www.mandae.com.br/rastreio",
+  "flash courier":     "https://www.flashcourier.com.br/rastreio",
+  "tudo vai":          "https://www.tudovai.com.br",
+}
+function getTranspLink(transportadora) {
+  if (!transportadora) return null
+  const t = norm(transportadora)
+  for (const [key, url] of Object.entries(TRANSP_LINKS)) {
+    if (t.includes(norm(key))) return url
+  }
+  // Fallback: busca no Google pela transportadora
+  return `https://www.google.com/search?q=${encodeURIComponent(transportadora + " rastreio contato")}`
+}
+
+
 const PROBLEMA_CONFIG = {
   ATRASO:            {label:"Atraso",           color:C.amber,bg:C.amberSoft, bd:C.amberBorder,icone:"⏰",sugestao:"Notificar cliente sobre o atraso na entrega"},
   POSSIVEL_EXTRAVIO: {label:"Possível Extravio", color:C.red,  bg:C.redSoft,  bd:C.redBorder,  icone:"🚨",sugestao:"Acionar transportadora imediatamente — possível extravio"},
@@ -547,7 +610,8 @@ function SugestaoSistema({r}) {
 // AcoesRapidas: botões de ação com feedback visual de loading
 function AcoesRapidas({r, perms, onNotificar, onAcionarTransp, onReenvio, onResolver, onDevolver}) {
   const [loading, setLoading] = useState(null)
-  const tipo = classificarProblema(r)
+  const tipo      = classificarProblema(r)
+  const transpUrl = getTranspLink(r.transportadora)
 
   const act = (key, fn) => async () => {
     setLoading(key); try { await fn() } finally { setLoading(null) }
@@ -555,8 +619,9 @@ function AcoesRapidas({r, perms, onNotificar, onAcionarTransp, onReenvio, onReso
 
   if (!perms?.canOperate) return null
 
-  const btn = (key, label, style={}) => (
-    <button key={key} onClick={act(key, {notif:onNotificar,transp:onAcionarTransp,reenv:onReenvio,resol:onResolver,dev:onDevolver}[key])}
+  const btn = (key, label, style={}, onClick=null) => (
+    <button key={key}
+      onClick={onClick || act(key, {notif:onNotificar,transp:onAcionarTransp,reenv:onReenvio,resol:onResolver,dev:onDevolver}[key])}
       disabled={loading!==null}
       style={{flex:1,border:"none",borderRadius:8,padding:"9px 6px",fontSize:10,fontWeight:600,cursor:loading?"wait":"pointer",letterSpacing:"0.03em",transition:"all .2s",opacity:loading!==null&&loading!==key?0.5:1,...style}}>
       {loading===key?"⏳":label}
@@ -567,12 +632,24 @@ function AcoesRapidas({r, perms, onNotificar, onAcionarTransp, onReenvio, onReso
     <div style={{marginBottom:4}}>
       <div style={{fontSize:8,color:C.text3,textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:500,marginBottom:7}}>Ações rápidas</div>
       <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-        {btn("notif", "📧 Notificar Cliente",     {background:C.brand,color:C.white})}
-        {btn("transp","🚛 Acionar Transportadora", {background:C.blueSoft,color:C.blue,border:`1px solid ${C.blueBorder}`})}
+        {btn("notif", "📧 Notificar Cliente", {background:C.brand,color:C.white})}
+        {/* Botão transportadora: registra ação + abre site da transportadora */}
+        <button
+          disabled={loading!==null}
+          onClick={async()=>{
+            setLoading("transp")
+            try { await onAcionarTransp() } finally { setLoading(null) }
+            if (transpUrl) window.open(transpUrl, "_blank", "noopener")
+          }}
+          title={transpUrl||""}
+          style={{flex:1,border:`1px solid ${C.blueBorder}`,borderRadius:8,padding:"9px 6px",fontSize:10,fontWeight:600,cursor:loading?"wait":"pointer",letterSpacing:"0.03em",transition:"all .2s",opacity:loading!==null&&loading!=="transp"?0.5:1,background:C.blueSoft,color:C.blue}}>
+          {loading==="transp"?"⏳":`🚛 Acionar ${r.transportadora||"Transportadora"} ↗`}
+        </button>
         {tipo==="DEVOLUCAO"&&btn("reenv","📦 Solicitar Reenvio",{background:C.amberSoft,color:C.amber,border:`1px solid ${C.amberBorder}`})}
         {r.atendimento!=="Resolvido"&&btn("resol","✓ Marcar Resolvido",{background:C.gold,color:C.white})}
         {btn("dev","← Devolver",{background:C.white,color:C.text2,border:`1px solid ${C.border}`})}
       </div>
+      {transpUrl&&<div style={{fontSize:9,color:C.text4,marginTop:4,letterSpacing:"0.02em"}}>↗ {transpUrl}</div>}
     </div>
   )
 }
@@ -778,7 +855,6 @@ export default function App() {
   const [syncStatus,setSyncStatus]=useState("idle")
   const [lastSync,setLastSync]=useState(null)
   const [countdown,setCountdown]=useState(10)
-  const [confirmClear,setConfirmClear]=useState(false)
   const saveTimer=useRef(null); const fileRef=useRef()
   const token = session?.access_token
 
@@ -940,8 +1016,19 @@ export default function App() {
   const handleReturnLog = id => {if (!perms?.canOperate)return;upd(id,{enviadoSuporte:false,sentAt:null},{acao:"Devolvido à Logística",usuario:nomeAtendente});setSelSup(null)}
   const handleClearAll  = () => {
     if (!perms?.canClear) return
-    if (!confirmClear){setConfirmClear(true);setTimeout(()=>setConfirmClear(false),4000);return}
-    setRows([]);setConfirmClear(false);dbClear(token).catch(()=>{});addToast("Todos os dados foram removidos","warn")
+    if (!window.confirm("Isso removerá TODOS os pedidos da base de dados. Esta ação não pode ser desfeita. Confirmar?")) return
+    setRows([]); dbClear(token).catch(()=>{}); addToast("Todos os dados foram removidos","warn")
+  }
+  const handleArchiveFromLog = id => {
+    if (!perms?.canOperate) return
+    upd(id, {atendimento:"Resolvido", enviadoSuporte:false}, {acao:"Arquivado pela Logística — entrega confirmada", usuario:nomeAtendente})
+    addToast("Pedido arquivado")
+  }
+  const bulkArchiveFromLog = () => {
+    if (!perms?.canOperate) return
+    const ts = new Date().toLocaleString("pt-BR")
+    setRows(prev=>prev.map(r=>selIds.has(r.id)?{...r,atendimento:"Resolvido",enviadoSuporte:false,historico:[...r.historico,{acao:"Arquivado em lote pela Logística",ts,usuario:nomeAtendente}]}:r))
+    addToast(`${selIds.size} pedido${selIds.size>1?"s":""} arquivado${selIds.size>1?"s":""}`); clearSel()
   }
   const toggleSort = col => {if (sortCol===col)setSortDir(d=>d==="asc"?"desc":"asc");else{setSortCol(col);setSortDir("asc")}}
 
@@ -1037,8 +1124,8 @@ export default function App() {
             </>
           )}
           {perms?.canClear&&rows.length>0&&(
-            <button onClick={handleClearAll} style={{background:confirmClear?C.red:"transparent",border:`1px solid ${confirmClear?C.red:"#333"}`,color:confirmClear?C.white:"#555",borderRadius:6,padding:"6px 14px",fontSize:10,cursor:"pointer",letterSpacing:"0.06em"}}>
-              {confirmClear?"⚠ Confirmar":"Limpar"}
+            <button onClick={handleClearAll} style={{background:"transparent",border:`1px solid #333`,color:"#555",borderRadius:6,padding:"6px 14px",fontSize:10,cursor:"pointer",letterSpacing:"0.06em"}}>
+              Limpar tudo
             </button>
           )}
           <div style={{width:1,height:28,background:"#2A2A2A"}}/>
@@ -1243,15 +1330,16 @@ export default function App() {
             {(lSrch||lSt!=="Todos"||lTr!=="Todos"||lUrg!=="Todos"||lAc!=="Todos")&&<button onClick={()=>{setLSrch("");setLSt("Todos");setLTr("Todos");setLUrg("Todos");setLAc("Todos")}} style={{...INP,cursor:"pointer",color:C.red,borderColor:C.redBorder,background:C.redSoft}}>× Limpar</button>}
           </div>
           {perms?.canSendSupport&&selIds.size>0&&(
-            <div style={{background:C.brand,borderRadius:10,padding:"12px 20px",marginBottom:14,display:"flex",alignItems:"center",gap:14,boxShadow:shadow.md}}>
+            <div style={{background:C.brand,borderRadius:10,padding:"12px 20px",marginBottom:14,display:"flex",alignItems:"center",gap:10,boxShadow:shadow.md}}>
               <span style={{color:"#888",fontSize:12,flex:1}}>{selIds.size} pedido{selIds.size>1?"s":""} selecionado{selIds.size>1?"s":""}</span>
-              <button onClick={bulkSend} style={{background:C.gold,border:"none",color:C.white,borderRadius:7,padding:"8px 20px",fontSize:11,cursor:"pointer",fontWeight:500,letterSpacing:"0.08em"}}>Enviar ao Suporte ({selIds.size})</button>
+              <button onClick={bulkSend} style={{background:C.gold,border:"none",color:C.white,borderRadius:7,padding:"8px 18px",fontSize:11,cursor:"pointer",fontWeight:500,letterSpacing:"0.08em"}}>Enviar ao Suporte ({selIds.size})</button>
+              {perms?.canOperate&&<button onClick={bulkArchiveFromLog} style={{background:C.green,border:"none",color:C.white,borderRadius:7,padding:"8px 18px",fontSize:11,cursor:"pointer",fontWeight:500,letterSpacing:"0.08em"}}>✓ Arquivar ({selIds.size})</button>}
               <button onClick={clearSel} style={{background:"transparent",border:`1px solid #333`,color:"#666",borderRadius:7,padding:"8px 14px",fontSize:11,cursor:"pointer"}}>Cancelar</button>
             </div>
           )}
           <div style={{overflowX:"auto",overflowY:"auto",maxHeight:"54vh",borderRadius:12,border:`1px solid ${C.border}`,boxShadow:shadow.sm}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:compact?11:12,tableLayout:"fixed",minWidth:1040}}>
-              <colgroup><col style={{width:36}}/><col style={{width:90}}/><col style={{width:130}}/><col style={{width:110}}/><col style={{width:110}}/><col style={{width:100}}/><col style={{width:110}}/><col style={{width:120}}/><col style={{width:70}}/><col style={{width:80}}/><col style={{width:110}}/><col style={{width:100}}/><col style={{width:36}}/></colgroup>
+              <colgroup><col style={{width:36}}/><col style={{width:86}}/><col style={{width:126}}/><col style={{width:106}}/><col style={{width:106}}/><col style={{width:96}}/><col style={{width:100}}/><col style={{width:110}}/><col style={{width:64}}/><col style={{width:76}}/><col style={{width:106}}/><col style={{width:130}}/><col style={{width:36}}/></colgroup>
               <thead>
                 <tr>
                   <th style={THF}>{perms?.canSendSupport&&<input type="checkbox" onChange={e=>e.target.checked?setSelIds(new Set(pagedLog.map(r=>r.id))):clearSel()} checked={selIds.size>0&&pagedLog.every(r=>selIds.has(r.id))} style={{cursor:"pointer",accentColor:C.gold}}/>}</th>
@@ -1276,10 +1364,15 @@ export default function App() {
                     <td style={{padding:`${pd}px 14px`}}><Chip val={r.urgencia} styles={urgStyles}/></td>
                     <td style={{padding:`${pd}px 14px`}}><Chip val={r.acionar} styles={acionStyles}/></td>
                     <td style={{padding:`${pd}px 14px`}}><SemMovBadge ultimaMov={r.ultimaMov}/></td>
-                    <td style={{padding:`${pd}px 14px`}}>{perms?.canSendSupport&&(
-                      <button onClick={()=>upd(r.id,{enviadoSuporte:true,atendimento:"Aberto",sentAt:new Date().toISOString()},{acao:"Enviado ao suporte"})} style={{background:C.cream,border:`1px solid ${C.border}`,color:C.text2,borderRadius:6,padding:"4px 10px",fontSize:10,cursor:"pointer",width:"100%",fontWeight:500,transition:"all .15s"}}>
-                        Enviar →
-                      </button>
+                    <td style={{padding:`${pd}px 8px`}}>{perms?.canSendSupport&&(
+                      <div style={{display:"flex",gap:4}}>
+                        <button onClick={()=>upd(r.id,{enviadoSuporte:true,atendimento:"Aberto",sentAt:new Date().toISOString()},{acao:"Enviado ao suporte"})} style={{flex:1,background:C.cream,border:`1px solid ${C.border}`,color:C.text2,borderRadius:6,padding:"4px 6px",fontSize:9,cursor:"pointer",fontWeight:500,transition:"all .15s",whiteSpace:"nowrap"}}>
+                          Suporte →
+                        </button>
+                        {perms?.canOperate&&<button onClick={()=>handleArchiveFromLog(r.id)} style={{flex:1,background:C.greenSoft,border:`1px solid ${C.greenBorder}`,color:C.green,borderRadius:6,padding:"4px 6px",fontSize:9,cursor:"pointer",fontWeight:600,whiteSpace:"nowrap"}}>
+                          ✓ Arq.
+                        </button>}
+                      </div>
                     )}</td>
                     <td style={{padding:`${pd}px 8px`,textAlign:"center"}}>{perms?.canDelete&&<button onClick={()=>del(r.id)} style={{background:"transparent",border:"none",color:C.text4,cursor:"pointer",fontSize:14}}>×</button>}</td>
                   </tr>
@@ -1352,8 +1445,9 @@ export default function App() {
                         )}
                         {r.alertaStatus&&<div style={{background:C.amberSoft,border:`1px solid ${C.amberBorder}`,borderRadius:5,padding:"2px 8px",fontSize:10,color:C.amber,marginBottom:4,display:"flex",alignItems:"center",gap:4}}><span>⚠</span><span style={{fontWeight:500}}>Status alterado!</span></div>}
                         <div style={{fontSize:11,color:C.text2,marginBottom:5,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.destinatario}</div>
-                        <div style={{display:"flex",gap:4,flexWrap:"wrap"}}><StatusBadge val={r.status}/><Chip val={r.urgencia} styles={urgStyles}/><Chip val={r.atendimento} styles={atendStyles}/></div>
-                        {r.responsavel&&<div style={{fontSize:9,color:C.text4,marginTop:5,letterSpacing:"0.06em"}}>RESP: {r.responsavel}</div>}
+                        <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:4}}><StatusBadge val={r.status}/><Chip val={r.urgencia} styles={urgStyles}/><Chip val={r.atendimento} styles={atendStyles}/></div>
+                        {r.prazo&&<div style={{marginBottom:2}}><SlaCell prazo={r.prazo}/></div>}
+                        {r.responsavel&&<div style={{fontSize:9,color:C.text4,marginTop:2,letterSpacing:"0.06em"}}>RESP: {r.responsavel}</div>}
                       </div>
                     </div>
                   )
