@@ -1521,7 +1521,7 @@ export default function App() {
 
       {/* ── SUPORTE ── */}
       {tab==="suporte"&&(
-        <div style={{display:"flex",minHeight:"calc(100vh - 110px)"}}>
+        <div style={{display:"flex",height:"calc(100vh - 110px)",overflow:"hidden"}}>
 
           {/* ── Fila lateral ── */}
           <div style={{width:detail?"360px":"100%",maxWidth:detail?"360px":"100%",borderRight:detail?`1px solid ${C.border}`:"none",display:"flex",flexDirection:"column",background:C.white,flexShrink:0}}>
@@ -1589,7 +1589,7 @@ export default function App() {
             </div>
           </div>
           {detail?(
-            <div ref={detailPanelRef} style={{flex:1,display:"flex",flexDirection:"column",overflowY:"auto",background:dark?"#1A1A1A":C.cream}}>
+            <div ref={detailPanelRef} style={{flex:1,display:"flex",flexDirection:"column",overflowY:"auto",background:dark?"#1A1A1A":C.cream,height:"100%"}}>
 
               {/* BLOCO 1 — TOPO STICKY: título + HeaderProblema + AcoesRapidas */}
               <div style={{background:C.white,padding:"16px 22px 14px",borderBottom:`1px solid ${C.border}`,position:"sticky",top:0,zIndex:5,boxShadow:shadow.sm}}>
