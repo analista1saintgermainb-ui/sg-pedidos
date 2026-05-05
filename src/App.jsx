@@ -496,6 +496,23 @@ function SlaCell({prazo}) {
   </div>
 }
 
+// Mostra se está no prazo ou em atraso com base na data atual + status entregue
+function PrazoStatusBadge({prazo, status}) {
+  const entregue = isEntregue(status)
+  const dt = parsePrazo(prazo)
+  const hoje = new Date(); hoje.setHours(0,0,0,0)
+  if (entregue) {
+    if (!dt) return <span style={{background:C.greenSoft,color:C.green,border:`1px solid ${C.greenBorder}`,borderRadius:10,padding:"2px 8px",fontSize:10,fontWeight:600}}>✓ Entregue</span>
+    const ok = hoje <= dt
+    return <span style={{background:ok?C.greenSoft:C.amberSoft,color:ok?C.green:C.amber,border:`1px solid ${ok?C.greenBorder:C.amberBorder}`,borderRadius:10,padding:"2px 8px",fontSize:10,fontWeight:600}}>{ok?"✓ No prazo":"⚠ Entregue com atraso"}</span>
+  }
+  if (!dt) return <span style={{background:C.creamDark,color:C.text4,border:`1px solid ${C.border}`,borderRadius:10,padding:"2px 8px",fontSize:10}}>Sem prazo</span>
+  const diff = Math.ceil((dt-hoje)/86400000)
+  if (diff < 0)   return <span style={{background:C.redSoft,  color:C.red,  border:`1px solid ${C.redBorder}`,  borderRadius:10,padding:"2px 8px",fontSize:10,fontWeight:700}}>⚠ {Math.abs(diff)}d atrasado</span>
+  if (diff === 0) return <span style={{background:C.amberSoft,color:C.amber,border:`1px solid ${C.amberBorder}`,borderRadius:10,padding:"2px 8px",fontSize:10,fontWeight:700}}>⚠ Vence hoje</span>
+  return               <span style={{background:C.greenSoft,color:C.green,border:`1px solid ${C.greenBorder}`,  borderRadius:10,padding:"2px 8px",fontSize:10,fontWeight:600}}>✓ No prazo</span>
+}
+
 function SemMovBadge({ultimaMov}) {
   const info = semMovInfo(ultimaMov)
   if (!info) return <span style={{fontSize:11,color:C.text4}}>{ultimaMov||"—"}</span>
@@ -852,6 +869,7 @@ export default function App() {
   const [selSupIds,setSelSupIds]=useState(new Set())
   const [openTpl,setOpenTpl]=useState(false); const [openHist,setOpenHist]=useState(false)
   const [aSrch,setASrch]=useState("")
+  const [aPage,setAPage]=useState(1)
   const [syncStatus,setSyncStatus]=useState("idle")
   const [lastSync,setLastSync]=useState(null)
   const [countdown,setCountdown]=useState(10)
@@ -943,6 +961,7 @@ export default function App() {
 
   useEffect(()=>{if (!rows.some(r=>r.isNew))return;const t=setTimeout(()=>setRows(p=>p.map(r=>({...r,isNew:false}))),6000);return()=>clearTimeout(t)},[rows])
   useEffect(()=>setLPage(1),[lSrch,lSt,lTr,lUrg,lAc,qf,sortCol,sortDir])
+  useEffect(()=>setAPage(1),[aSrch])
   useEffect(()=>{setOpenTpl(false);setOpenHist(false)},[selSup])
 
   // BUG FIX #7: doImport — removido trailing ", [rows,...])" corrompido
@@ -1339,11 +1358,11 @@ export default function App() {
           )}
           <div style={{overflowX:"auto",overflowY:"auto",maxHeight:"54vh",borderRadius:12,border:`1px solid ${C.border}`,boxShadow:shadow.sm}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:compact?11:12,tableLayout:"fixed",minWidth:1040}}>
-              <colgroup><col style={{width:36}}/><col style={{width:86}}/><col style={{width:126}}/><col style={{width:106}}/><col style={{width:106}}/><col style={{width:96}}/><col style={{width:100}}/><col style={{width:110}}/><col style={{width:64}}/><col style={{width:76}}/><col style={{width:106}}/><col style={{width:130}}/><col style={{width:36}}/></colgroup>
+              <colgroup><col style={{width:36}}/><col style={{width:82}}/><col style={{width:120}}/><col style={{width:100}}/><col style={{width:100}}/><col style={{width:90}}/><col style={{width:84}}/><col style={{width:110}}/><col style={{width:100}}/><col style={{width:62}}/><col style={{width:72}}/><col style={{width:100}}/><col style={{width:130}}/><col style={{width:36}}/></colgroup>
               <thead>
                 <tr>
                   <th style={THF}>{perms?.canSendSupport&&<input type="checkbox" onChange={e=>e.target.checked?setSelIds(new Set(pagedLog.map(r=>r.id))):clearSel()} checked={selIds.size>0&&pagedLog.every(r=>selIds.has(r.id))} style={{cursor:"pointer",accentColor:C.gold}}/>}</th>
-                  {[["nuvem","No NUVEM"],["destinatario","Destinatário"],["transportadora","Transportadora"],["rastreio","Cód. Rastreio"],["status","Status"],["prazo","Prazo / SLA"],["motivo","Motivo (auto)"],["urgencia","Urgência"],["acionar","Acionar?"]].map(([col,label])=>(
+                  {[["nuvem","No NUVEM"],["destinatario","Destinatário"],["transportadora","Transportadora"],["rastreio","Cód. Rastreio"],["status","Status"],["prazo","Prazo"],["prazoStatus","Situação Prazo"],["motivo","Motivo (auto)"],["urgencia","Urgência"],["acionar","Acionar?"]].map(([col,label])=>(
                     <th key={col} onClick={()=>toggleSort(col)} style={TH}>{label}<SortIcon col={col} sortCol={sortCol} sortDir={sortDir}/></th>
                   ))}
                   <th style={THF}>Ação</th><th style={THF}/>
@@ -1359,7 +1378,8 @@ export default function App() {
                     <td style={{padding:`${pd}px 14px`,color:C.text2,overflow:"hidden",textOverflow:"ellipsis"}}>{r.transportadora}</td>
                     <td style={{padding:`${pd}px 14px`,color:C.text3,fontFamily:"monospace",fontSize:10,overflow:"hidden",textOverflow:"ellipsis"}}>{r.rastreio}</td>
                     <td style={{padding:`${pd}px 14px`}}><StatusBadge val={r.status}/></td>
-                    <td style={{padding:`${pd}px 14px`}}><SlaCell prazo={r.prazo}/></td>
+                    <td style={{padding:`${pd}px 14px`,fontSize:11,color:C.text2}}>{r.prazo||"—"}</td>
+                    <td style={{padding:`${pd}px 10px`}}><PrazoStatusBadge prazo={r.prazo} status={r.status}/></td>
                     <td style={{padding:`${pd}px 14px`,color:C.text3,fontSize:10,overflow:"hidden",textOverflow:"ellipsis"}} title={r.motivo}>{r.motivo}</td>
                     <td style={{padding:`${pd}px 14px`}}><Chip val={r.urgencia} styles={urgStyles}/></td>
                     <td style={{padding:`${pd}px 14px`}}><Chip val={r.acionar} styles={acionStyles}/></td>
@@ -1641,30 +1661,44 @@ export default function App() {
           {arch===0?<div style={{textAlign:"center",padding:"56px 0",color:C.text4}}><div style={{fontSize:32,marginBottom:12,opacity:0.2}}>◎</div><div style={{fontSize:14}}>Nenhum atendimento arquivado</div></div>:(
             <div>
               <div style={{marginBottom:14}}><input value={aSrch} onChange={e=>setASrch(e.target.value)} placeholder="Buscar nos arquivados..." style={{...INP,width:"100%",padding:"10px 14px",boxSizing:"border-box",boxShadow:shadow.sm}}/></div>
-              <div style={{overflowX:"auto",overflowY:"auto",maxHeight:"60vh",borderRadius:12,border:`1px solid ${C.border}`,boxShadow:shadow.sm}}>
-                <table style={{width:"100%",borderCollapse:"collapse",fontSize:compact?11:12,tableLayout:"fixed",minWidth:900}}>
-                  <colgroup><col style={{width:90}}/><col style={{width:150}}/><col style={{width:110}}/><col style={{width:110}}/><col style={{width:120}}/><col style={{width:70}}/><col style={{width:110}}/><col style={{width:96}}/><col style={{width:96}}/><col style={{width:90}}/></colgroup>
-                  <thead><tr>{["No NUVEM","Destinatário","Transportadora","Status","Motivo","Urgência","Prazo / SLA","Chamado","Responsável","Ações"].map(h=><th key={h} style={THF}>{h}</th>)}</tr></thead>
-                  <tbody>
-                    {archRows.length===0?<tr><td colSpan={10} style={{textAlign:"center",padding:32,color:C.text4}}>Nenhum resultado</td></tr>
-                    :archRows.map((r,i)=>(
-                      <tr key={r.id} style={{background:i%2===0?C.white:C.cream,borderBottom:`1px solid ${C.border}55`}}>
-                        <td style={{padding:`${pd}px 14px`,fontWeight:600,color:C.text3,fontSize:11}}>{r.nuvem}</td>
-                        <td style={{padding:`${pd}px 14px`,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:C.text1}} title={r.destinatario}>{r.destinatario}</td>
-                        <td style={{padding:`${pd}px 14px`,color:C.text2,overflow:"hidden",textOverflow:"ellipsis"}}>{r.transportadora}</td>
-                        <td style={{padding:`${pd}px 14px`}}><StatusBadge val={r.status}/></td>
-                        <td style={{padding:`${pd}px 14px`,color:C.text3,fontSize:10,overflow:"hidden",textOverflow:"ellipsis"}} title={r.motivo}>{r.motivo}</td>
-                        <td style={{padding:`${pd}px 14px`}}><Chip val={r.urgencia} styles={urgStyles}/></td>
-                        <td style={{padding:`${pd}px 14px`}}><SlaCell prazo={r.prazo}/></td>
-                        <td style={{padding:`${pd}px 14px`,color:C.text3,fontSize:11}}>{r.chamado||"—"}</td>
-                        <td style={{padding:`${pd}px 14px`,color:C.text3,fontSize:11,overflow:"hidden",textOverflow:"ellipsis"}}>{r.responsavel||"—"}</td>
-                        <td style={{padding:`${pd}px 14px`}}>{perms?.canOperate&&<button onClick={()=>upd(r.id,{atendimento:"Em andamento"},{acao:"Reaberto dos arquivados",usuario:nomeAtendente})} style={{background:C.cream,border:`1px solid ${C.border}`,color:C.text2,borderRadius:6,padding:"4px 12px",fontSize:10,cursor:"pointer",fontWeight:500}}>Reabrir</button>}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <div style={{marginTop:10,fontSize:11,color:C.text4}}>{archRows.length} de {arch} arquivados</div>
+              {(()=>{
+                const aTotalPages = Math.max(1,Math.ceil(archRows.length/PAGE_SIZE))
+                const aSafeP = Math.min(aPage,aTotalPages)
+                const pagedArch = archRows.slice((aSafeP-1)*PAGE_SIZE, aSafeP*PAGE_SIZE)
+                return <>
+                  <div style={{overflowX:"auto",overflowY:"auto",maxHeight:"60vh",borderRadius:12,border:`1px solid ${C.border}`,boxShadow:shadow.sm}}>
+                    <table style={{width:"100%",borderCollapse:"collapse",fontSize:compact?11:12,tableLayout:"fixed",minWidth:900}}>
+                      <colgroup><col style={{width:90}}/><col style={{width:150}}/><col style={{width:110}}/><col style={{width:110}}/><col style={{width:120}}/><col style={{width:70}}/><col style={{width:110}}/><col style={{width:96}}/><col style={{width:96}}/><col style={{width:90}}/></colgroup>
+                      <thead><tr>{["No NUVEM","Destinatário","Transportadora","Status","Motivo","Urgência","Prazo / SLA","Chamado","Responsável","Ações"].map(h=><th key={h} style={THF}>{h}</th>)}</tr></thead>
+                      <tbody>
+                        {pagedArch.length===0?<tr><td colSpan={10} style={{textAlign:"center",padding:32,color:C.text4}}>Nenhum resultado</td></tr>
+                        :pagedArch.map((r,i)=>(
+                          <tr key={r.id} style={{background:i%2===0?C.white:C.cream,borderBottom:`1px solid ${C.border}55`}}>
+                            <td style={{padding:`${pd}px 14px`,fontWeight:600,color:C.text3,fontSize:11}}>{r.nuvem}</td>
+                            <td style={{padding:`${pd}px 14px`,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:C.text1}} title={r.destinatario}>{r.destinatario}</td>
+                            <td style={{padding:`${pd}px 14px`,color:C.text2,overflow:"hidden",textOverflow:"ellipsis"}}>{r.transportadora}</td>
+                            <td style={{padding:`${pd}px 14px`}}><StatusBadge val={r.status}/></td>
+                            <td style={{padding:`${pd}px 14px`,color:C.text3,fontSize:10,overflow:"hidden",textOverflow:"ellipsis"}} title={r.motivo}>{r.motivo}</td>
+                            <td style={{padding:`${pd}px 14px`}}><Chip val={r.urgencia} styles={urgStyles}/></td>
+                            <td style={{padding:`${pd}px 14px`}}><SlaCell prazo={r.prazo}/></td>
+                            <td style={{padding:`${pd}px 14px`,color:C.text3,fontSize:11}}>{r.chamado||"—"}</td>
+                            <td style={{padding:`${pd}px 14px`,color:C.text3,fontSize:11,overflow:"hidden",textOverflow:"ellipsis"}}>{r.responsavel||"—"}</td>
+                            <td style={{padding:`${pd}px 14px`}}>{perms?.canOperate&&<button onClick={()=>upd(r.id,{atendimento:"Em andamento"},{acao:"Reaberto dos arquivados",usuario:nomeAtendente})} style={{background:C.cream,border:`1px solid ${C.border}`,color:C.text2,borderRadius:6,padding:"4px 12px",fontSize:10,cursor:"pointer",fontWeight:500}}>Reabrir</button>}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:10}}>
+                    <div style={{fontSize:11,color:C.text4}}>{archRows.length===0?"Nenhum resultado":`Mostrando ${((aSafeP-1)*PAGE_SIZE)+1}–${Math.min(aSafeP*PAGE_SIZE,archRows.length)} de ${archRows.length} arquivados`}</div>
+                    {aTotalPages>1&&<div style={{display:"flex",gap:4,alignItems:"center"}}>
+                      <button onClick={()=>setAPage(n=>Math.max(1,n-1))} disabled={aSafeP===1} style={{...INP,padding:"5px 12px",cursor:aSafeP===1?"not-allowed":"pointer",opacity:aSafeP===1?0.4:1}}>‹</button>
+                      <span style={{fontSize:11,color:C.text3,padding:"0 10px"}}>{aSafeP} / {aTotalPages}</span>
+                      <button onClick={()=>setAPage(n=>Math.min(aTotalPages,n+1))} disabled={aSafeP===aTotalPages} style={{...INP,padding:"5px 12px",cursor:aSafeP===aTotalPages?"not-allowed":"pointer",opacity:aSafeP===aTotalPages?0.4:1}}>›</button>
+                    </div>}
+                  </div>
+                </>
+              })()}
             </div>
           )}
         </div>
