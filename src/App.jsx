@@ -1227,13 +1227,12 @@ export default function App() {
   const trData    = Object.entries(trStats).map(([name,s])=>({name,total:s.total,entregues:s.entregues,noPrazo:s.noPrazo,foraPrazo:s.foraPrazo,vencidos:s.vencidos,pct:s.entregues>0?Math.round((s.noPrazo/s.entregues)*100):0})).sort((a,b)=>b.total-a.total).slice(0,8)
   const trBarData = trData.map(t=>({name:t.name,"No prazo":t.noPrazo,"Fora prazo":t.foraPrazo,"Vencidos":t.vencidos}))
 
-  // BUG FIX #12: ufStats forEach sem trailing lixo
   const ufStats={}
   rows.forEach(r=>{
     const uf=(r.uf||"").toUpperCase().trim(); if (!uf||uf.length>3) return
     if (!ufStats[uf]) ufStats[uf]={total:0,entregues:0,noPrazo:0}
     const s=ufStats[uf]; s.total++
-    if (isEntregue(r.status)){s.entregues++;if(r.entregueNoPrazo===true)s.noPrazo++}
+    if (isEntregue(r.status)){s.entregues++;if(calcNoPrazoLive(r)===true)s.noPrazo++}
   })
   const ufData     = Object.entries(ufStats).map(([uf,s])=>({uf,total:s.total,entregues:s.entregues,noPrazo:s.noPrazo,pct:s.entregues>0?Math.round((s.noPrazo/s.entregues)*100):0})).sort((a,b)=>b.total-a.total).slice(0,15)
   const urgData    = ["Alta","Média","Baixa"].map(u=>({name:u,value:baseLog.filter(r=>r.urgencia===u).length,fill:urgStyles[u].dot})).filter(d=>d.value>0)
