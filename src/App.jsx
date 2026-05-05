@@ -172,8 +172,8 @@ const PAGE_SIZE = 200
 function parseStatusPrazo(raw) {
   if (!raw) return null
   const v = (raw||"").toLowerCase().trim()
-  if (v.includes("no prazo")||v==="ok"||v.includes("dentro")||v.includes("normal")) return true
-  if (v.includes("atras")||v.includes("fora")||v==="vencido"||v.includes("atraso"))  return false
+  if (v.includes("antes")||v.includes("no prazo")||v==="ok"||v.includes("dentro")||v.includes("normal")) return true
+  if (v.includes("atras")||v.includes("fora")||v==="vencido"||v.includes("atraso")) return false
   return null
 }
 
@@ -1193,11 +1193,13 @@ export default function App() {
   const parados    = baseLog.filter(r=>{const d=diasSemMov(r.ultimaMov);return d!==null&&d>=ALERTA_DIAS}).length
 
   // BUG FIX #11: const trStats={} estava faltando; BUG FIX #13: forEach sem trailing lixo
+  const TRANSP_INVALIDAS = new Set(["SP","RJ","MG","RS","SC","PR","BA","GO","PE","CE","AM","PA","MT","MS","ES","RN","PI","AL","SE","TO","RO","AC","AP","RR","MA","PB","DF"])
   const trStats={}
   rows.forEach(r=>{
-    if (!r.transportadora) return
-    if (!trStats[r.transportadora]) trStats[r.transportadora]={total:0,entregues:0,noPrazo:0,foraPrazo:0,vencidos:0}
-    const s=trStats[r.transportadora]; s.total++
+    const tr = (r.transportadora||"").trim()
+    if (!tr || tr.length <= 2 || TRANSP_INVALIDAS.has(tr.toUpperCase())) return
+    if (!trStats[tr]) trStats[tr]={total:0,entregues:0,noPrazo:0,foraPrazo:0,vencidos:0}
+    const s=trStats[tr]; s.total++
     if (isEntregue(r.status)){s.entregues++;if(r.entregueNoPrazo===true)s.noPrazo++;if(r.entregueNoPrazo===false)s.foraPrazo++}
     else{const d=parsePrazo(r.prazo);if(d&&d<hoje)s.vencidos++}
   })
