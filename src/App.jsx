@@ -315,6 +315,20 @@ function parseData(text) {
     email:       isHdr?findIdx(hdrs,"email")         :-1,
   }
   const g = (c,i) => i>=0&&i<c.length?c[i]:""
+
+  // Fallback: se email não achado pelo nome, detecta pela primeira coluna com "@" nos valores
+  let emailIdxFallback = -1
+  if (ix.email < 0 && data.length > 0) {
+    const sample = data.slice(0, Math.min(5, data.length))
+    for (let col = 0; col < 30; col++) {
+      const hasEmail = sample.some(line => {
+        const cells = line.split(sep).map(v=>v.trim().replace(/^["']|["']$/g,""))
+        return (cells[col]||"").includes("@")
+      })
+      if (hasEmail) { emailIdxFallback = col; break }
+    }
+    if (emailIdxFallback >= 0) ix.email = emailIdxFallback
+  }
   return data.map((line,i) => {
     const c = line.split(sep).map(v=>v.trim().replace(/^["']|["']$/g,""))
     const status = g(c,ix.status), prazo = g(c,ix.prazo)
