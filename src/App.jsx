@@ -210,10 +210,23 @@ function calcMotivo(s) {
 
 function parsePrazo(v) {
   if (!v) return null
-  const c = v.replace(/[^\d\/\-\.]/g,"")
-  for (const t of [c, c.split("/").reverse().join("-"), c.split(".").reverse().join("-")]) {
-    const d = new Date(t); if (!isNaN(d.getTime())) return d
-  }
+  const s = String(v).trim()
+  // DD/MM/YYYY ou D/M/YYYY (padrão brasileiro)
+  const br = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+  if (br) return new Date(+br[3], +br[2]-1, +br[1])
+  // YYYY-MM-DD (ISO)
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (iso) return new Date(+iso[1], +iso[2]-1, +iso[3])
+  // DD-MM-YYYY
+  const dmy = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/)
+  if (dmy) return new Date(+dmy[3], +dmy[2]-1, +dmy[1])
+  // DD.MM.YYYY
+  const dot = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/)
+  if (dot) return new Date(+dot[3], +dot[2]-1, +dot[1])
+  // Excel serial (número inteiro como 45678)
+  const num = parseFloat(s)
+  if (!isNaN(num) && num > 30000 && num < 100000)
+    return new Date(Math.round((num - 25569) * 86400000))
   return null
 }
 
@@ -1354,8 +1367,8 @@ export default function App() {
             </div>
           )}
           <div style={{overflowX:"auto",overflowY:"auto",maxHeight:"54vh",borderRadius:12,border:`1px solid ${C.border}`,boxShadow:shadow.sm}}>
-            <table style={{width:"100%",borderCollapse:"collapse",fontSize:compact?11:12,tableLayout:"fixed",minWidth:1040}}>
-              <colgroup><col style={{width:36}}/><col style={{width:82}}/><col style={{width:120}}/><col style={{width:100}}/><col style={{width:100}}/><col style={{width:90}}/><col style={{width:84}}/><col style={{width:110}}/><col style={{width:100}}/><col style={{width:62}}/><col style={{width:72}}/><col style={{width:100}}/><col style={{width:130}}/><col style={{width:36}}/></colgroup>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:compact?11:12,tableLayout:"fixed",minWidth:1280}}>
+              <colgroup><col style={{width:36}}/><col style={{width:88}}/><col style={{width:130}}/><col style={{width:110}}/><col style={{width:110}}/><col style={{width:96}}/><col style={{width:88}}/><col style={{width:120}}/><col style={{width:110}}/><col style={{width:68}}/><col style={{width:76}}/><col style={{width:110}}/><col style={{width:138}}/><col style={{width:36}}/></colgroup>
               <thead>
                 <tr>
                   <th style={THF}>{perms?.canSendSupport&&<input type="checkbox" onChange={e=>e.target.checked?setSelIds(new Set(pagedLog.map(r=>r.id))):clearSel()} checked={selIds.size>0&&pagedLog.every(r=>selIds.has(r.id))} style={{cursor:"pointer",accentColor:C.gold}}/>}</th>
