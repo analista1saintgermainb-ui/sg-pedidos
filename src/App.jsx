@@ -321,9 +321,15 @@ function parseData(text) {
     const spRaw = g(c,ix.statusPrazo)
     const spVal = parseStatusPrazo(spRaw)
     const dt = parsePrazo(prazo) // BUG FIX #8: dt declarado antes de uso em noPrazo
-    // metrics.entrega_no_prazo: data_entrega = ultimaMov; prazo = prazo logístico
-    const dtEntrega = entregue ? parsePrazo(g(c,ix.ultimaMov)) : null
-    const noPrazo = spVal!==null ? spVal : (entregue&&dt&&dtEntrega ? dtEntrega<=dt : entregue&&dt ? new Date()<=dt : null)
+    // metrics.entrega_no_prazo: comparar apenas DATA (sem hora)
+    // data_entrega = Data Última Ocorrência (só a data), prazo = Prazo Logístico (só a data)
+    const dtEntregaRaw = g(c,ix.ultimaMov)
+    const dtEntrega = isEntregue(status) && dtEntregaRaw ? parsePrazo(dtEntregaRaw) : null
+    const dtEntregaDate = dtEntrega ? new Date(dtEntrega.getFullYear(), dtEntrega.getMonth(), dtEntrega.getDate()) : null
+    const dtPrazoDate   = dt         ? new Date(dt.getFullYear(),       dt.getMonth(),       dt.getDate())        : null
+    const noPrazo = spVal!==null ? spVal
+      : (dtEntregaDate && dtPrazoDate) ? dtEntregaDate <= dtPrazoDate
+      : null
     return {
       id: Date.now()+i,
       nuvem: g(c,ix.nuvem), destinatario: g(c,ix.dest),
@@ -538,13 +544,14 @@ function SlaCell({prazo}) {
 // Situação Prazo: Antes do Prazo / No Prazo / Atraso
 function SituacaoPrazoBadge({prazo, status, entregueNoPrazo}) {
   const dt = parsePrazo(prazo)
-  // Se veio do sistema (campo statusPrazo do Excel)
   if (entregueNoPrazo === true)  return <span style={{background:C.greenSoft,color:C.green,border:`1px solid ${C.greenBorder}`,borderRadius:10,padding:"2px 8px",fontSize:10,fontWeight:600}}>No Prazo</span>
   if (entregueNoPrazo === false) return <span style={{background:C.redSoft,color:C.red,border:`1px solid ${C.redBorder}`,borderRadius:10,padding:"2px 8px",fontSize:10,fontWeight:600}}>Atraso</span>
   if (!dt) return <span style={{background:C.creamDark,color:C.text4,border:`1px solid ${C.border}`,borderRadius:10,padding:"2px 8px",fontSize:10}}>—</span>
+  // Comparar apenas data (sem hora)
   const hoje = new Date(); hoje.setHours(0,0,0,0)
-  const diff = Math.ceil((dt-hoje)/86400000)
-  if (diff > 0)  return <span style={{background:C.greenSoft,color:C.green,border:`1px solid ${C.greenBorder}`,borderRadius:10,padding:"2px 8px",fontSize:10,fontWeight:600}}>Antes do Prazo</span>
+  const prazoDate = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate())
+  const diff = Math.ceil((prazoDate-hoje)/86400000)
+  if (diff > 0)   return <span style={{background:C.greenSoft,color:C.green,border:`1px solid ${C.greenBorder}`,borderRadius:10,padding:"2px 8px",fontSize:10,fontWeight:600}}>Antes do Prazo</span>
   if (diff === 0) return <span style={{background:C.amberSoft,color:C.amber,border:`1px solid ${C.amberBorder}`,borderRadius:10,padding:"2px 8px",fontSize:10,fontWeight:600}}>No Prazo</span>
   return <span style={{background:C.redSoft,color:C.red,border:`1px solid ${C.redBorder}`,borderRadius:10,padding:"2px 8px",fontSize:10,fontWeight:600}}>Atraso</span>
 }
