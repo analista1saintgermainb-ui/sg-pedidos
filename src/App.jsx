@@ -122,6 +122,7 @@ const HEADER_MAP = {
   cep:          ["destinatário cep","destinatario cep","cep destinatário","cep destinatario","cep"],
   statusPrazo:  ["status prazo","statusprazo","prazo status","situacao prazo","situação prazo"],
   dataCriacao:  ["data criação envio","data criacao envio","data de criacao","data criacao","data envio"],
+  email:        ["e-mail destinatário","email destinatario","e-mail do cliente","email do cliente","email cliente","e-mail","email"],
 }
 const norm    = s => (s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim()
 const findIdx = (hdrs, key) => {
@@ -311,6 +312,7 @@ function parseData(text) {
     cep:         isHdr?findIdx(hdrs,"cep")           :-1,
     statusPrazo: isHdr?findIdx(hdrs,"statusPrazo")   :-1,
     dataCriacao: isHdr?findIdx(hdrs,"dataCriacao")   :-1,
+    email:       isHdr?findIdx(hdrs,"email")         :-1,
   }
   const g = (c,i) => i>=0&&i<c.length?c[i]:""
   return data.map((line,i) => {
@@ -341,6 +343,7 @@ function parseData(text) {
       cep:          g(c,ix.cep),
       statusPrazoRaw: spRaw,
       dataCriacao:  g(c,ix.dataCriacao),
+      email:        g(c,ix.email),
       motivo:       calcMotivo(status),
       urgencia:     urg,
       acionar:      calcAcionar(urg,status),
@@ -667,11 +670,36 @@ function SugestaoSistema({r}) {
   )
 }
 
+// Monta link mailto com assunto e corpo personalizados por tipo de problema
+function buildMailto(r, nomeAtendente) {
+  const email = (r.email||"").trim()
+  if (!email) return null
+  const tipo  = classificarProblema(r)
+  const atend = (nomeAtendente||"").split(" ")[0] || "Time SG"
+  const nome  = (r.destinatario||"").split(" ")[0] || "Cliente"
+
+  const assuntos = {
+    EXTRAVIO:          `Pedido #${r.nuvem} — Objeto Extraviado`,
+    POSSIVEL_EXTRAVIO: `Pedido #${r.nuvem} — Pedido sem atualização`,
+    DEVOLUCAO:         `Pedido #${r.nuvem} — Devolução de Encomenda`,
+    ENDERECO:          `Pedido #${r.nuvem} — Tentativa de Entrega`,
+    ATRASO:            `Pedido #${r.nuvem} — Atraso na Entrega`,
+    OK:                `Pedido #${r.nuvem} — Atualização`,
+  }
+  const subject = assuntos[tipo] || `Pedido #${r.nuvem}`
+  const body    = getTemplate(r, "zendesk", nomeAtendente)
+    .replace(/^Assunto:.*\n\n/,"") // remove linha de assunto do template Zendesk
+
+  return `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
+}
+
 // AcoesRapidas: botões de ação com feedback visual de loading
-function AcoesRapidas({r, perms, onNotificar, onAcionarTransp, onReenvio, onResolver, onDevolver}) {
+function AcoesRapidas({r, perms, nomeAtendente, onNotificar, onAcionarTransp, onReenvio, onResolver, onDevolver}) {
   const [loading, setLoading] = useState(null)
   const tipo      = classificarProblema(r)
   const transpUrl = getTranspLink(r.transportadora)
+  const mailtoUrl = buildMailto(r, nomeAtendente)
+  const temEmail  = !!mailtoUrl
 
   const act = (key, fn) => async () => {
     setLoading(key); try { await fn() } finally { setLoading(null) }
@@ -692,8 +720,24 @@ function AcoesRapidas({r, perms, onNotificar, onAcionarTransp, onReenvio, onReso
     <div style={{marginBottom:4}}>
       <div style={{fontSize:8,color:C.text3,textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:500,marginBottom:7}}>Ações rápidas</div>
       <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-        {btn("notif", "📧 Notificar Cliente", {background:C.brand,color:C.white})}
-        {/* Botão transportadora: registra ação + abre site da transportadora */}
+        {/* Botão Email: abre Gmail com assunto + corpo preenchidos */}
+        {temEmail ? (
+          <a href={mailtoUrl}
+            onClick={()=>{ onNotificar() }}
+            target="_blank" rel="noopener noreferrer"
+            style={{flex:1,background:C.brand,color:C.white,borderRadius:8,padding:"9px 6px",fontSize:10,fontWeight:600,cursor:"pointer",letterSpacing:"0.03em",textDecoration:"none",display:"flex",alignItems:"center",justifyContent:"center",gap:4}}>
+            📧 Notificar por Email ↗
+          </a>
+        ) : (
+          <button
+            onClick={()=>{ onNotificar(); }}
+            disabled={loading!==null}
+            title="Adicione o email do cliente no arquivo para habilitar envio direto"
+            style={{flex:1,background:C.brand,color:C.white,borderRadius:8,padding:"9px 6px",fontSize:10,fontWeight:600,cursor:"pointer",letterSpacing:"0.03em",opacity:0.6}}>
+            📧 Notificar Cliente
+          </button>
+        )}
+        {/* Botão transportadora */}
         <button
           disabled={loading!==null}
           onClick={async()=>{
@@ -709,7 +753,11 @@ function AcoesRapidas({r, perms, onNotificar, onAcionarTransp, onReenvio, onReso
         {r.atendimento!=="Resolvido"&&btn("resol","✓ Marcar Resolvido",{background:C.gold,color:C.white})}
         {btn("dev","← Devolver",{background:C.white,color:C.text2,border:`1px solid ${C.border}`})}
       </div>
-      {transpUrl&&<div style={{fontSize:9,color:C.text4,marginTop:4,letterSpacing:"0.02em"}}>↗ {transpUrl}</div>}
+      {temEmail
+        ? <div style={{fontSize:9,color:C.text4,marginTop:4}}>↗ {r.email}</div>
+        : <div style={{fontSize:9,color:C.amber,marginTop:4}}>⚠ Email do cliente não encontrado no arquivo</div>
+      }
+      {transpUrl&&<div style={{fontSize:9,color:C.text4,marginTop:2}}>↗ {transpUrl}</div>}
     </div>
   )
 }
@@ -1317,7 +1365,7 @@ export default function App() {
           <div style={{background:C.white,borderRadius:14,border:`1px solid ${C.border}`,padding:24,marginBottom:16,boxShadow:shadow.sm}}>
             <div style={{fontSize:9,color:C.text3,marginBottom:14,fontWeight:500,letterSpacing:"0.12em",textTransform:"uppercase"}}>Mapeamento automático de colunas</div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-              {[["No NUVEM","Identificador Ecommerce"],["Destinatário","Destinatário Nome"],["Transportadora","Estratégia de Frete"],["Cód. Rastreio","Rastreador Last Mile"],["Status","Situação"],["Prazo","Prazo Logístico"],["Cidade / UF","Destinatário Cidade / UF"],["Status Prazo","Status Prazo"],["CEP","Destinatário CEP"],["Data Envio","Data Criação Envio"]].map(([c,a])=>(
+              {[["No NUVEM","Identificador Ecommerce"],["Destinatário","Destinatário Nome"],["Transportadora","Estratégia de Frete"],["Cód. Rastreio","Rastreador Last Mile"],["Status","Situação"],["Prazo","Prazo Logístico"],["Cidade / UF","Destinatário Cidade / UF"],["Status Prazo","Status Prazo"],["CEP","Destinatário CEP"],["Data Envio","Data Criação Envio"],["Email","E-mail Destinatário / Email Cliente"]].map(([c,a])=>(
                 <div key={c} style={{background:C.cream,border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 12px"}}>
                   <div style={{color:C.gold,fontWeight:500,marginBottom:2,fontSize:11}}>{c}</div>
                   <div style={{color:C.text4,fontSize:10}}>{a}</div>
@@ -1647,6 +1695,7 @@ export default function App() {
                 <AcoesRapidas
                   r={detail}
                   perms={perms}
+                  nomeAtendente={nomeAtendente}
                   onNotificar={()=>{
                     upd(detail.id,{atendimento:detail.atendimento==="Aberto"?"Em andamento":detail.atendimento},{acao:"Cliente notificado",usuario:nomeAtendente})
                     setOpenTpl(true)
