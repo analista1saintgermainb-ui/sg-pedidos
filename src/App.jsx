@@ -316,18 +316,19 @@ function parseData(text) {
   }
   const g = (c,i) => i>=0&&i<c.length?c[i]:""
 
-  // Fallback: se email não achado pelo nome, detecta pela primeira coluna com "@" nos valores
-  let emailIdxFallback = -1
+  // Fallback: detecta coluna de email pelo símbolo @ nas primeiras linhas de dados
   if (ix.email < 0 && data.length > 0) {
-    const sample = data.slice(0, Math.min(5, data.length))
-    for (let col = 0; col < 30; col++) {
-      const hasEmail = sample.some(line => {
+    const firstRows = data.slice(0, Math.min(10, data.length))
+    outer: for (let col = 0; col < 50; col++) {
+      for (const line of firstRows) {
         const cells = line.split(sep).map(v=>v.trim().replace(/^["']|["']$/g,""))
-        return (cells[col]||"").includes("@")
-      })
-      if (hasEmail) { emailIdxFallback = col; break }
+        const val = (cells[col]||"")
+        if (val.includes("@") && val.includes(".")) {
+          ix.email = col
+          break outer
+        }
+      }
     }
-    if (emailIdxFallback >= 0) ix.email = emailIdxFallback
   }
   return data.map((line,i) => {
     const c = line.split(sep).map(v=>v.trim().replace(/^["']|["']$/g,""))
@@ -1150,8 +1151,15 @@ export default function App() {
         else if (norm(existing.status)===norm(novo.status)){
           if (isEntregue(novo.status)&&!existing.enviadoSuporte&&existing.atendimento!=="Resolvido"){
             const idx=result.findIndex(r=>r.nuvem===novo.nuvem)
-            if (idx>=0){result[idx]={...existing,atendimento:"Resolvido",enviadoSuporte:false,historico:[...existing.historico,{acao:"Arquivado automaticamente — entrega concluída",ts:new Date().toLocaleString("pt-BR")}]};updated++}
-          }else{skipped++}
+            if (idx>=0){result[idx]={...existing,email:novo.email||existing.email,atendimento:"Resolvido",enviadoSuporte:false,historico:[...existing.historico,{acao:"Arquivado automaticamente — entrega concluída",ts:new Date().toLocaleString("pt-BR")}]};updated++}
+          }else{
+            // Mesmo status: só atualiza email se vier preenchido
+            if (novo.email && !existing.email) {
+              const idx=result.findIndex(r=>r.nuvem===novo.nuvem)
+              if (idx>=0) result[idx]={...existing, email:novo.email}
+            }
+            skipped++
+          }
         }else{
           const idx=result.findIndex(r=>r.nuvem===novo.nuvem)
           if (idx>=0){
