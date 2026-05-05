@@ -499,12 +499,14 @@ const atendStyles = {
 // ─── Formatação de status (remove underscore, capitaliza) ────────
 function formatStatus(s) {
   if (!s) return "—"
-  return s.replace(/_/g," ").replace(/\w/g, l=>l.toUpperCase())
-    .replace(/Em Transito/i,"Em trânsito")
-    .replace(/Saiu Para Entrega/i,"Saiu para entrega")
-    .replace(/Aguardando Retirada Transportadora/i,"Aguard. retirada transportadora")
-    .replace(/Problema Entrega/i,"Problema na entrega")
-    .replace(/Sem Informacao/i,"Sem informação")
+  const r = s.replace(/_/g," ")
+    .replace(/em transito/i,"Em trânsito")
+    .replace(/saiu para entrega/i,"Saiu para entrega")
+    .replace(/aguardando retirada transportadora/i,"Aguard. retirada transp.")
+    .replace(/problema entrega/i,"Problema na entrega")
+    .replace(/sem informacao/i,"Sem informação")
+    .replace(/triado/i,"Triado")
+  return r.charAt(0).toUpperCase() + r.slice(1)
 }
 
 // ─── Componentes base ─────────────────────────────────────────
@@ -1150,6 +1152,15 @@ export default function App() {
     return (!q||[r.nuvem,r.destinatario,r.transportadora,r.rastreio,r.status,r.motivo].some(v=>(v||"").toLowerCase().includes(q)))
       &&(lSt==="Todos"||r.status===lSt)&&(lTr==="Todos"||r.transportadora===lTr)
       &&(lUrg==="Todos"||r.urgencia===lUrg)&&(lAc==="Todos"||r.acionar===lAc)
+      &&(lSitPrazo==="Todos"||(()=>{
+        const dt=parsePrazo(r.prazo); if(!dt) return false
+        const h=new Date(); h.setHours(0,0,0,0)
+        const d=Math.ceil((dt-h)/86400000)
+        if(lSitPrazo==="Atraso") return d<0
+        if(lSitPrazo==="No Prazo") return d===0
+        if(lSitPrazo==="Antes do Prazo") return d>0
+        return true
+      })())
   }),sortCol,sortDir)
   const totalPages = Math.max(1,Math.ceil(filteredLog.length/PAGE_SIZE))
   const safeP      = Math.min(lPage,totalPages)
