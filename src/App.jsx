@@ -106,7 +106,7 @@ const ALERTA_DIAS = 7
 // ─── Mapeamento de colunas expandido ─────────────────────────
 const HEADER_MAP = {
   nuvem:        ["identificador ecommerce","id ecommerce","no nuvem","nuvem","pedido"],
-  destinatario: ["destinatário nome","destinatario nome","destinatário","destinatario","nome do pedido","nome do cliente","nome","cliente"],
+  destinatario: ["destinatário nome","destinatario nome","nome destinatário","nome destinatario","nome do destinatário","nome do destinatario","destinatário","destinatario","nome do cliente","nome do pedido"],
   transportadora:["estratégia de frete","estrategia de frete","transportadora","frete"],
   rastreio:     ["rastreador last mile","código de rastreio","codigo de rastreio","rastreio","last mile"],
   status:       ["situação","situacao","situac","status"],
@@ -194,9 +194,25 @@ function parsePrazo(v) {
 
 function calcUrg(prazo, status) {
   const s = (status||"").toLowerCase()
-  if (s.includes("extravia")||s.includes("devolv")) return "Alta"
-  if (s.includes("entregue")||s.includes("finaliz")) return "Baixa"
-  const dt = parsePrazo(prazo); if (!dt) return "—"
+  // ── Alta: situações críticas ──────────────────────────────
+  if (s.includes("extravia")||s.includes("perdid"))                          return "Alta"
+  if (s.includes("devolv")||s.includes("recusa"))                            return "Alta"
+  if (s.includes("problema_entrega")||s.includes("problema entrega"))        return "Alta"
+  if (s.includes("falha")||s.includes("retido")||s.includes("apreend"))     return "Alta"
+  // ── Baixa: entregue ou saindo para entrega ────────────────
+  if (s.includes("entregue")||s.includes("finaliz"))                         return "Baixa"
+  if (s.includes("saiu_para_entrega")||s.includes("saiu para entrega")||
+      s.includes("saida_para_entrega")||s.includes("saiu"))                  return "Baixa"
+  // ── Média: etapas intermediárias ──────────────────────────
+  if (s.includes("aguardando_retirada")||s.includes("aguardando retirada"))  return "Média"
+  if (s.includes("triado")||s.includes("triagem"))                           return "Média"
+  if (s.includes("em_transito")||s.includes("em transito")||
+      s.includes("trânsito")||s.includes("transito"))                        return "Média"
+  if (s.includes("postado")||s.includes("coletado")||s.includes("colet"))   return "Média"
+  if (s.includes("aguardando")||s.includes("processando"))                   return "Média"
+  // ── Fallback: calcular pelo prazo logístico ───────────────
+  const dt = parsePrazo(prazo)
+  if (!dt) return "Média" // nunca retorna "—" — sem prazo = Média por padrão
   const h = new Date(); h.setHours(0,0,0,0)
   const d = Math.ceil((dt-h)/86400000)
   if (d<=1) return "Alta"; if (d<=3) return "Média"; return "Baixa"
@@ -312,9 +328,9 @@ function applySortRows(rows, col, dir) {
 }
 
 function exportCSV(rows) {
-  const h = ["No NUVEM","Destinatário","Cidade","UF","CEP","Transportadora","Cód. Rastreio","Status","Prazo","No NF","Motivo","Urgência","Acionar?","Suporte","Atendimento","Chamado","Responsável","Observações"]
+  const h = ["No NUVEM","Destinatário","Cidade","UF","CEP","Transportadora","Cód. Rastreio","Status","Prazo","Motivo","Urgência","Acionar?","Suporte","Atendimento","Chamado","Responsável","Observações"]
   const e = v => `"${String(v||"").replace(/"/g,'""')}"`
-  const csv = [h.map(e).join(";"),...rows.map(r=>[r.nuvem,r.destinatario,r.cidade,r.uf,r.cep,r.transportadora,r.rastreio,r.status,r.prazo,r.nf,r.motivo,r.urgencia,r.acionar,r.enviadoSuporte?"Sim":"Não",r.atendimento,r.chamado,r.responsavel,r.obs].map(e).join(";"))].join("\n")
+  const csv = [h.map(e).join(";"),...rows.map(r=>[r.nuvem,r.destinatario,r.cidade,r.uf,r.cep,r.transportadora,r.rastreio,r.status,r.prazo,r.motivo,r.urgencia,r.acionar,r.enviadoSuporte?"Sim":"Não",r.atendimento,r.chamado,r.responsavel,r.obs].map(e).join(";"))].join("\n")
   const a = document.createElement("a")
   a.href = URL.createObjectURL(new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8;"}))
   a.download = "saint_germain_pedidos.csv"; a.click()
@@ -338,7 +354,7 @@ function getTemplate(r, ch, nomeAtendente) {
     return `Olá, ${nome}! Tudo bem? Me chamo ${atend} e faço parte do time de encantamento da SG 🤍\n\nVocê pode rastrear seu pedido *#${r.nuvem}* diretamente neste link:\n${linkRastreio||r.rastreio||"—"}\n\nStatus atual: *${r.status}*${r.prazo?`\nPrazo previsto: *${r.prazo}*`:""}\n\nSe tiver qualquer dúvida, estamos à disposição! 🤍\n${atend} — Time de Encantamento SG`
   } else {
     const assinatura = `Atenciosamente,\n${atend}\nTime de Encantamento — Saint Germain`
-    const det = `• Pedido: #${r.nuvem}\n• NF: ${r.nf}\n• Transportadora: ${r.transportadora}\n• Rastreio: ${r.rastreio||"—"}\n• Prazo previsto: ${r.prazo||"—"}`
+    const det = `• Pedido: #${r.nuvem}\n• Transportadora: ${r.transportadora}\n• Rastreio: ${r.rastreio||"—"}\n• Prazo previsto: ${r.prazo||"—"}`
     if (extrav) return `Assunto: Pedido #${r.nuvem} — Objeto Extraviado\n\nOlá, ${r.destinatario}! Tudo bem?\n\nMe chamo ${atend} e faço parte do time de encantamento da SG 🤍\n\nEntramos em contato sobre uma ocorrência no seu pedido.\n\n${det}\nStatus: Objeto extraviado\n\nJá acionamos nossa equipe de logística para apurar com urgência. Retornaremos em até 2 dias úteis.\n\nPedimos sinceras desculpas pelo transtorno.\n\n${assinatura}`
     if (devolv) return `Assunto: Pedido #${r.nuvem} — Devolução de Encomenda\n\nOlá, ${r.destinatario}! Tudo bem?\n\nMe chamo ${atend} e faço parte do time de encantamento da SG 🤍\n\nSua encomenda retornou ao nosso centro de distribuição após tentativas de entrega sem sucesso.\n\n${det}\n\nPara realizarmos um novo envio sem custo adicional, pedimos que confirme seu endereço respondendo a este chamado.\n\n${assinatura}`
     if (atraso) return `Assunto: Pedido #${r.nuvem} — Atraso na Entrega\n\nOlá, ${r.destinatario}! Tudo bem?\n\nMe chamo ${atend} e faço parte do time de encantamento da SG 🤍\n\nIdentificamos um atraso na entrega do seu pedido.\n\n${det}\n\nEstamos acompanhando o caso junto à transportadora e te manteremos informado(a).\n\nPedimos desculpas pelo inconveniente 🙏\n\n${assinatura}`
@@ -936,15 +952,15 @@ export default function App() {
   const qCounts  = Object.fromEntries(QFILTERS.map(f=>[f.id,applyQF(baseLog,f.id).length]))
   const filteredLog = applySortRows(applyQF(baseLog,qf).filter(r=>{
     const q=lSrch.toLowerCase()
-    return (!q||[r.nuvem,r.destinatario,r.transportadora,r.rastreio,r.status,r.nf,r.motivo].some(v=>(v||"").toLowerCase().includes(q)))
+    return (!q||[r.nuvem,r.destinatario,r.transportadora,r.rastreio,r.status,r.motivo].some(v=>(v||"").toLowerCase().includes(q)))
       &&(lSt==="Todos"||r.status===lSt)&&(lTr==="Todos"||r.transportadora===lTr)
       &&(lUrg==="Todos"||r.urgencia===lUrg)&&(lAc==="Todos"||r.acionar===lAc)
   }),sortCol,sortDir)
   const totalPages = Math.max(1,Math.ceil(filteredLog.length/PAGE_SIZE))
   const safeP      = Math.min(lPage,totalPages)
   const pagedLog   = filteredLog.slice((safeP-1)*PAGE_SIZE,safeP*PAGE_SIZE)
-  const supRows = baseSup.filter(r=>{const q=sSrch.toLowerCase();return(!q||[r.nuvem,r.destinatario,r.rastreio,r.nf,r.status].some(v=>(v||"").toLowerCase().includes(q)))&&(sAtend==="Todos"||r.atendimento===sAtend)&&(sUrg==="Todos"||r.urgencia===sUrg)}).sort((a,b)=>{const uo={Alta:0,Média:1,Baixa:2,"—":3},ao={Aberto:0,"Em andamento":1};return(uo[a.urgencia]-uo[b.urgencia])||(ao[a.atendimento]-ao[b.atendimento])})
-  const archRows = baseArch.filter(r=>{const q=aSrch.toLowerCase();return!q||[r.nuvem,r.destinatario,r.transportadora,r.status,r.nf].some(v=>(v||"").toLowerCase().includes(q))}).sort((a,b)=>{const ta=(a.historico.find(h=>h.acao&&(h.acao.includes("Resolvido")||h.acao.includes("Arquivado")))||{}).ts||"";const tb=(b.historico.find(h=>h.acao&&(h.acao.includes("Resolvido")||h.acao.includes("Arquivado")))||{}).ts||"";return tb.localeCompare(ta)})
+  const supRows = baseSup.filter(r=>{const q=sSrch.toLowerCase();return(!q||[r.nuvem,r.destinatario,r.rastreio,r.status].some(v=>(v||"").toLowerCase().includes(q)))&&(sAtend==="Todos"||r.atendimento===sAtend)&&(sUrg==="Todos"||r.urgencia===sUrg)}).sort((a,b)=>{const uo={Alta:0,Média:1,Baixa:2,"—":3},ao={Aberto:0,"Em andamento":1};return(uo[a.urgencia]-uo[b.urgencia])||(ao[a.atendimento]-ao[b.atendimento])})
+  const archRows = baseArch.filter(r=>{const q=aSrch.toLowerCase();return!q||[r.nuvem,r.destinatario,r.transportadora,r.status].some(v=>(v||"").toLowerCase().includes(q))}).sort((a,b)=>{const ta=(a.historico.find(h=>h.acao&&(h.acao.includes("Resolvido")||h.acao.includes("Arquivado")))||{}).ts||"";const tb=(b.historico.find(h=>h.acao&&(h.acao.includes("Resolvido")||h.acao.includes("Arquivado")))||{}).ts||"";return tb.localeCompare(ta)})
 
   const stOpts=uniq(baseLog.map(r=>r.status)), trOpts=uniq(baseLog.map(r=>r.transportadora))
   const st={log:baseLog.length,alta:baseLog.filter(r=>r.urgencia==="Alta").length,acionar:baseLog.filter(r=>r.acionar==="Sim").length}
@@ -1235,11 +1251,11 @@ export default function App() {
           )}
           <div style={{overflowX:"auto",overflowY:"auto",maxHeight:"54vh",borderRadius:12,border:`1px solid ${C.border}`,boxShadow:shadow.sm}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:compact?11:12,tableLayout:"fixed",minWidth:1040}}>
-              <colgroup><col style={{width:36}}/><col style={{width:76}}/><col style={{width:114}}/><col style={{width:94}}/><col style={{width:104}}/><col style={{width:94}}/><col style={{width:100}}/><col style={{width:64}}/><col style={{width:108}}/><col style={{width:62}}/><col style={{width:72}}/><col style={{width:106}}/><col style={{width:94}}/><col style={{width:36}}/></colgroup>
+              <colgroup><col style={{width:36}}/><col style={{width:90}}/><col style={{width:130}}/><col style={{width:110}}/><col style={{width:110}}/><col style={{width:100}}/><col style={{width:110}}/><col style={{width:120}}/><col style={{width:70}}/><col style={{width:80}}/><col style={{width:110}}/><col style={{width:100}}/><col style={{width:36}}/></colgroup>
               <thead>
                 <tr>
                   <th style={THF}>{perms?.canSendSupport&&<input type="checkbox" onChange={e=>e.target.checked?setSelIds(new Set(pagedLog.map(r=>r.id))):clearSel()} checked={selIds.size>0&&pagedLog.every(r=>selIds.has(r.id))} style={{cursor:"pointer",accentColor:C.gold}}/>}</th>
-                  {[["nuvem","No NUVEM"],["destinatario","Destinatário"],["transportadora","Transportadora"],["rastreio","Cód. Rastreio"],["status","Status"],["prazo","Prazo / SLA"],["nf","No NF"],["motivo","Motivo (auto)"],["urgencia","Urgência"],["acionar","Acionar?"]].map(([col,label])=>(
+                  {[["nuvem","No NUVEM"],["destinatario","Destinatário"],["transportadora","Transportadora"],["rastreio","Cód. Rastreio"],["status","Status"],["prazo","Prazo / SLA"],["motivo","Motivo (auto)"],["urgencia","Urgência"],["acionar","Acionar?"]].map(([col,label])=>(
                     <th key={col} onClick={()=>toggleSort(col)} style={TH}>{label}<SortIcon col={col} sortCol={sortCol} sortDir={sortDir}/></th>
                   ))}
                   <th style={THF}>Ação</th><th style={THF}/>
@@ -1256,7 +1272,6 @@ export default function App() {
                     <td style={{padding:`${pd}px 14px`,color:C.text3,fontFamily:"monospace",fontSize:10,overflow:"hidden",textOverflow:"ellipsis"}}>{r.rastreio}</td>
                     <td style={{padding:`${pd}px 14px`}}><StatusBadge val={r.status}/></td>
                     <td style={{padding:`${pd}px 14px`}}><SlaCell prazo={r.prazo}/></td>
-                    <td style={{padding:`${pd}px 14px`,color:C.text2,fontSize:11}}>{r.nf}</td>
                     <td style={{padding:`${pd}px 14px`,color:C.text3,fontSize:10,overflow:"hidden",textOverflow:"ellipsis"}} title={r.motivo}>{r.motivo}</td>
                     <td style={{padding:`${pd}px 14px`}}><Chip val={r.urgencia} styles={urgStyles}/></td>
                     <td style={{padding:`${pd}px 14px`}}><Chip val={r.acionar} styles={acionStyles}/></td>
@@ -1357,7 +1372,7 @@ export default function App() {
                   <div>
                     <div style={{fontSize:9,color:C.gold,letterSpacing:"0.16em",textTransform:"uppercase",marginBottom:4}}>Pedido em atendimento</div>
                     <div style={{fontSize:18,fontWeight:500,color:C.text1,fontFamily:"'Cormorant Garamond',serif",marginBottom:2}}>{detail.destinatario}</div>
-                    <div style={{fontSize:11,color:C.text3}}>#{detail.nuvem} · NF {detail.nf} · {detail.transportadora}</div>
+                    <div style={{fontSize:11,color:C.text3}}>#{detail.nuvem} · {detail.transportadora}</div>
                   </div>
                   <button onClick={()=>setSelSup(null)} style={{background:"transparent",border:`1px solid ${C.border}`,color:C.text4,cursor:"pointer",fontSize:16,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:8,flexShrink:0}}>×</button>
                 </div>
@@ -1534,7 +1549,7 @@ export default function App() {
               <div style={{marginBottom:14}}><input value={aSrch} onChange={e=>setASrch(e.target.value)} placeholder="Buscar nos arquivados..." style={{...INP,width:"100%",padding:"10px 14px",boxSizing:"border-box",boxShadow:shadow.sm}}/></div>
               <div style={{overflowX:"auto",overflowY:"auto",maxHeight:"60vh",borderRadius:12,border:`1px solid ${C.border}`,boxShadow:shadow.sm}}>
                 <table style={{width:"100%",borderCollapse:"collapse",fontSize:compact?11:12,tableLayout:"fixed",minWidth:900}}>
-                  <colgroup><col style={{width:80}}/><col style={{width:140}}/><col style={{width:98}}/><col style={{width:98}}/><col style={{width:108}}/><col style={{width:64}}/><col style={{width:100}}/><col style={{width:88}}/><col style={{width:82}}/><col style={{width:90}}/></colgroup>
+                  <colgroup><col style={{width:90}}/><col style={{width:150}}/><col style={{width:110}}/><col style={{width:110}}/><col style={{width:120}}/><col style={{width:70}}/><col style={{width:110}}/><col style={{width:96}}/><col style={{width:96}}/><col style={{width:90}}/></colgroup>
                   <thead><tr>{["No NUVEM","Destinatário","Transportadora","Status","Motivo","Urgência","Prazo / SLA","Chamado","Responsável","Ações"].map(h=><th key={h} style={THF}>{h}</th>)}</tr></thead>
                   <tbody>
                     {archRows.length===0?<tr><td colSpan={10} style={{textAlign:"center",padding:32,color:C.text4}}>Nenhum resultado</td></tr>
