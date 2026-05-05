@@ -1050,9 +1050,15 @@ export default function App() {
   useEffect(()=>setLPage(1),[lSrch,lSt,lTr,lUrg,lAc,lSitPrazo,qf,sortCol,sortDir])
   useEffect(()=>setAPage(1),[aSrch])
   const detailPanelRef = useRef(null)
+  const queueRef = useRef(null)
   useEffect(()=>{
-    setOpenTpl(false);setOpenHist(false)
-    if (selSup && detailPanelRef.current) detailPanelRef.current.scrollTop = 0
+    setOpenTpl(false); setOpenHist(false)
+    if (detailPanelRef.current) detailPanelRef.current.scrollTop = 0
+    // Rola a fila para que o item selecionado fique no topo
+    if (selSup && queueRef.current) {
+      const el = queueRef.current.querySelector(`[data-id="${selSup}"]`)
+      if (el) el.scrollIntoView({block:"start", behavior:"smooth"})
+    }
   },[selSup])
 
   // BUG FIX #7: doImport — removido trailing ", [rows,...])" corrompido
@@ -1550,7 +1556,7 @@ export default function App() {
                 </div>
               )}
             </div>
-            <div style={{overflowY:"auto",flex:1}}>
+            <div ref={queueRef} style={{overflowY:"auto",flex:1}}>
               {supView==="kanban"?(
                 <KanbanSuporteView rows={supRows} onSelect={setSelSup} selSup={selSup} perms={perms} upd={upd} nomeAtendente={nomeAtendente}/>
               ):ss.total===0
@@ -1562,7 +1568,7 @@ export default function App() {
                   const cfg   = PROBLEMA_CONFIG[tipo]
                   const acColor = (tipo==="EXTRAVIO"||tipo==="POSSIVEL_EXTRAVIO")?C.red:r.urgencia==="Alta"?C.red:r.urgencia==="Média"?C.gold:C.green
                   return (
-                    <div key={r.id} onClick={()=>setSelSup(isSel?null:r.id)}
+                    <div key={r.id} data-id={r.id} onClick={()=>setSelSup(isSel?null:r.id)}
                       style={{padding:"12px 16px 12px 14px",cursor:"pointer",borderBottom:`1px solid ${C.border}55`,borderLeft:`3px solid ${acColor}`,background:isSel?C.amberSoft:r.alertaStatus?`${C.amber}08`:C.white,transition:"background .15s",display:"flex",alignItems:"flex-start",gap:10}}>
                       {perms?.canOperate&&<input type="checkbox" checked={selSupIds.has(r.id)} onClick={e=>e.stopPropagation()} onChange={()=>toggleSelSup(r.id)} style={{marginTop:3,cursor:"pointer",accentColor:C.gold,flexShrink:0}}/>}
                       <div style={{flex:1,minWidth:0}}>
