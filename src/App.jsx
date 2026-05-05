@@ -122,7 +122,7 @@ const HEADER_MAP = {
   cep:          ["destinatário cep","destinatario cep","cep destinatário","cep destinatario","cep"],
   statusPrazo:  ["status prazo","statusprazo","prazo status","situacao prazo","situação prazo"],
   dataCriacao:  ["data criação envio","data criacao envio","data de criacao","data criacao","data envio"],
-  email:        ["e-mail destinatário","email destinatario","e-mail do cliente","email do cliente","email cliente","e-mail","email"],
+  email:        ["destinatário e-mail","destinatario e-mail","e-mail destinatário","email destinatario","e-mail do cliente","email do cliente","email cliente","e-mail","email"],
 }
 const norm    = s => (s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim()
 const findIdx = (hdrs, key) => {
@@ -1113,6 +1113,12 @@ export default function App() {
     if (selSup && queueRef.current) {
       const el = queueRef.current.querySelector(`[data-id="${selSup}"]`)
       if (el) el.scrollIntoView({block:"start", behavior:"smooth"})
+    }
+    // Auto-preenche responsável com usuário logado se ainda estiver vazio
+    if (selSup && nomeAtendente) {
+      setRows(prev=>prev.map(r=>
+        r.id===selSup && !r.responsavel ? {...r, responsavel:nomeAtendente} : r
+      ))
     }
   },[selSup])
 
