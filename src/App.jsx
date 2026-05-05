@@ -496,21 +496,18 @@ function SlaCell({prazo}) {
   </div>
 }
 
-// Mostra se está no prazo ou em atraso com base na data atual + status entregue
-function PrazoStatusBadge({prazo, status}) {
-  const entregue = isEntregue(status)
+// Situação Prazo: Antes do Prazo / No Prazo / Atraso
+function SituacaoPrazoBadge({prazo, status, entregueNoPrazo}) {
   const dt = parsePrazo(prazo)
+  // Se veio do sistema (campo statusPrazo do Excel)
+  if (entregueNoPrazo === true)  return <span style={{background:C.greenSoft,color:C.green,border:`1px solid ${C.greenBorder}`,borderRadius:10,padding:"2px 8px",fontSize:10,fontWeight:600}}>No Prazo</span>
+  if (entregueNoPrazo === false) return <span style={{background:C.redSoft,color:C.red,border:`1px solid ${C.redBorder}`,borderRadius:10,padding:"2px 8px",fontSize:10,fontWeight:600}}>Atraso</span>
+  if (!dt) return <span style={{background:C.creamDark,color:C.text4,border:`1px solid ${C.border}`,borderRadius:10,padding:"2px 8px",fontSize:10}}>—</span>
   const hoje = new Date(); hoje.setHours(0,0,0,0)
-  if (entregue) {
-    if (!dt) return <span style={{background:C.greenSoft,color:C.green,border:`1px solid ${C.greenBorder}`,borderRadius:10,padding:"2px 8px",fontSize:10,fontWeight:600}}>✓ Entregue</span>
-    const ok = hoje <= dt
-    return <span style={{background:ok?C.greenSoft:C.amberSoft,color:ok?C.green:C.amber,border:`1px solid ${ok?C.greenBorder:C.amberBorder}`,borderRadius:10,padding:"2px 8px",fontSize:10,fontWeight:600}}>{ok?"✓ No prazo":"⚠ Entregue com atraso"}</span>
-  }
-  if (!dt) return <span style={{background:C.creamDark,color:C.text4,border:`1px solid ${C.border}`,borderRadius:10,padding:"2px 8px",fontSize:10}}>Sem prazo</span>
   const diff = Math.ceil((dt-hoje)/86400000)
-  if (diff < 0)   return <span style={{background:C.redSoft,  color:C.red,  border:`1px solid ${C.redBorder}`,  borderRadius:10,padding:"2px 8px",fontSize:10,fontWeight:700}}>⚠ {Math.abs(diff)}d atrasado</span>
-  if (diff === 0) return <span style={{background:C.amberSoft,color:C.amber,border:`1px solid ${C.amberBorder}`,borderRadius:10,padding:"2px 8px",fontSize:10,fontWeight:700}}>⚠ Vence hoje</span>
-  return               <span style={{background:C.greenSoft,color:C.green,border:`1px solid ${C.greenBorder}`,  borderRadius:10,padding:"2px 8px",fontSize:10,fontWeight:600}}>✓ No prazo</span>
+  if (diff > 0)  return <span style={{background:C.greenSoft,color:C.green,border:`1px solid ${C.greenBorder}`,borderRadius:10,padding:"2px 8px",fontSize:10,fontWeight:600}}>Antes do Prazo</span>
+  if (diff === 0) return <span style={{background:C.amberSoft,color:C.amber,border:`1px solid ${C.amberBorder}`,borderRadius:10,padding:"2px 8px",fontSize:10,fontWeight:600}}>No Prazo</span>
+  return <span style={{background:C.redSoft,color:C.red,border:`1px solid ${C.redBorder}`,borderRadius:10,padding:"2px 8px",fontSize:10,fontWeight:600}}>Atraso</span>
 }
 
 function SemMovBadge({ultimaMov}) {
@@ -1379,7 +1376,7 @@ export default function App() {
                     <td style={{padding:`${pd}px 14px`,color:C.text3,fontFamily:"monospace",fontSize:10,overflow:"hidden",textOverflow:"ellipsis"}}>{r.rastreio}</td>
                     <td style={{padding:`${pd}px 14px`}}><StatusBadge val={r.status}/></td>
                     <td style={{padding:`${pd}px 14px`,fontSize:11,color:C.text2}}>{r.prazo||"—"}</td>
-                    <td style={{padding:`${pd}px 10px`}}><PrazoStatusBadge prazo={r.prazo} status={r.status}/></td>
+                    <td style={{padding:`${pd}px 10px`}}><SituacaoPrazoBadge prazo={r.prazo} status={r.status} entregueNoPrazo={r.entregueNoPrazo}/></td>
                     <td style={{padding:`${pd}px 14px`,color:C.text3,fontSize:10,overflow:"hidden",textOverflow:"ellipsis"}} title={r.motivo}>{r.motivo}</td>
                     <td style={{padding:`${pd}px 14px`}}><Chip val={r.urgencia} styles={urgStyles}/></td>
                     <td style={{padding:`${pd}px 14px`}}><Chip val={r.acionar} styles={acionStyles}/></td>
