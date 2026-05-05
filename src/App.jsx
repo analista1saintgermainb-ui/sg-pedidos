@@ -1187,21 +1187,42 @@ export default function App() {
   const arch=baseArch.length
 
   const entregues  = rows.filter(r=>isEntregue(r.status))
-  const noPrazo    = entregues.filter(r=>r.entregueNoPrazo===true).length
-  const pctNoPrazo = entregues.length>0?Math.round((noPrazo/entregues.length)*100):0
   const hoje       = new Date(); hoje.setHours(0,0,0,0)
   const parados    = baseLog.filter(r=>{const d=diasSemMov(r.ultimaMov);return d!==null&&d>=ALERTA_DIAS}).length
 
+  // Calcula entregueNoPrazo on-the-fly (não confia no valor salvo, evita bug de import antigo)
+  const calcNoPrazoLive = r => {
+    const spVal = parseStatusPrazo(r.statusPrazoRaw)
+    if (spVal !== null) return spVal
+    if (!isEntregue(r.status)) return null
+    const dtEntrega = parsePrazo(r.ultimaMov)
+    const dtPrazo   = parsePrazo(r.prazo)
+    if (!dtEntrega || !dtPrazo) return null
+    const de = new Date(dtEntrega.getFullYear(), dtEntrega.getMonth(), dtEntrega.getDate())
+    const dp = new Date(dtPrazo.getFullYear(),   dtPrazo.getMonth(),   dtPrazo.getDate())
+    return de <= dp
+  }
+
+  const noPrazo    = entregues.filter(r=>calcNoPrazoLive(r)===true).length
+  const pctNoPrazo = entregues.length>0?Math.round((noPrazo/entregues.length)*100):0
+
   // BUG FIX #11: const trStats={} estava faltando; BUG FIX #13: forEach sem trailing lixo
   const TRANSP_INVALIDAS = new Set(["SP","RJ","MG","RS","SC","PR","BA","GO","PE","CE","AM","PA","MT","MS","ES","RN","PI","AL","SE","TO","RO","AC","AP","RR","MA","PB","DF"])
+
   const trStats={}
   rows.forEach(r=>{
     const tr = (r.transportadora||"").trim()
     if (!tr || tr.length <= 2 || TRANSP_INVALIDAS.has(tr.toUpperCase())) return
     if (!trStats[tr]) trStats[tr]={total:0,entregues:0,noPrazo:0,foraPrazo:0,vencidos:0}
     const s=trStats[tr]; s.total++
-    if (isEntregue(r.status)){s.entregues++;if(r.entregueNoPrazo===true)s.noPrazo++;if(r.entregueNoPrazo===false)s.foraPrazo++}
-    else{const d=parsePrazo(r.prazo);if(d&&d<hoje)s.vencidos++}
+    if (isEntregue(r.status)){
+      s.entregues++
+      const np = calcNoPrazoLive(r)
+      if (np===true)  s.noPrazo++
+      if (np===false) s.foraPrazo++
+    } else {
+      const d=parsePrazo(r.prazo); if(d&&d<hoje) s.vencidos++
+    }
   })
   const trData    = Object.entries(trStats).map(([name,s])=>({name,total:s.total,entregues:s.entregues,noPrazo:s.noPrazo,foraPrazo:s.foraPrazo,vencidos:s.vencidos,pct:s.entregues>0?Math.round((s.noPrazo/s.entregues)*100):0})).sort((a,b)=>b.total-a.total).slice(0,8)
   const trBarData = trData.map(t=>({name:t.name,"No prazo":t.noPrazo,"Fora prazo":t.foraPrazo,"Vencidos":t.vencidos}))
