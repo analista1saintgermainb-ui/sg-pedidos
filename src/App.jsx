@@ -30,6 +30,9 @@ const C = {
   blue:       "#1A5276",
   blueSoft:   "#EAF2FB",
   blueBorder: "#AACDE6",
+  purple:     "#6C3483",
+  purpleSoft: "#F5EEF8",
+  purpleBorder:"#D7BDE2",
 }
 const shadow = {
   sm: "0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)",
@@ -46,6 +49,9 @@ const globalStyle = `
   ::-webkit-scrollbar-thumb:hover { background: ${C.gold}; }
   select, input, textarea, button { font-family: 'Inter', sans-serif; }
   tr:hover td { background: ${C.creamDark} !important; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.5; } }
+  .fade-in { animation: fadeIn 0.2s ease; }
 `
 
 // ─── Supabase ─────────────────────────────────────────────────
@@ -92,25 +98,120 @@ async function loadUsuarios(token){ const r = await fetch(`${SUPA_URL}/rest/v1/u
 async function saveUsuario(u, token){ await fetch(`${SUPA_URL}/rest/v1/usuarios`,{method:"POST",headers:{...aSH(token),Prefer:"resolution=merge-duplicates,return=minimal"},body:JSON.stringify(u)}) }
 async function deleteUsuario(id, token){ await fetch(`${SUPA_URL}/rest/v1/usuarios?id=eq.${id}`,{method:"DELETE",headers:aSH(token)}) }
 
+// ─── Supabase: Configurações de estorno ───────────────────────
+async function loadEstornoConfig(token) {
+  const r = await fetch(`${SUPA_URL}/rest/v1/configuracoes?chave=eq.estorno_sheets_url&select=*`, {headers:aSH(token)})
+  if (!r.ok) return null
+  const d = await r.json(); return d[0]?.valor || null
+}
+async function saveEstornoConfig(url, token) {
+  await fetch(`${SUPA_URL}/rest/v1/configuracoes`, {
+    method:"POST",
+    headers:{...aSH(token), Prefer:"resolution=merge-duplicates,return=minimal"},
+    body:JSON.stringify({chave:"estorno_sheets_url", valor:url})
+  })
+}
+
+// ─── Google Sheets: Buscar todas as abas de estorno ───────────
+// Extrai o ID da planilha publicada e busca CSV de cada aba (por gid)
+function extractSheetId(url) {
+  const m = url.match(/\/d\/e\/([^/]+)\//)
+  return m ? m[1] : null
+}
+
+async function fetchEstornosFromSheets(pubUrl) {
+  // As 4 abas identificadas no print — buscamos por índice 0,1,2,3
+  // O Google Sheets pub CSV permite ?gid=xxx, mas para pubhtml não temos os gids
+  // Usamos output=csv que pega a aba ativa; para múltiplas abas, tentamos os índices
+  const sheetId = extractSheetId(pubUrl)
+  if (!sheetId) throw new Error("URL inválida")
+
+  const baseUrl = `https://docs.google.com/spreadsheets/d/e/${sheetId}/pub?output=csv`
+  
+  // Tenta buscar abas por índice 0 a 3
+  const results = []
+  for (let i = 0; i < 4; i++) {
+    try {
+      const url = i === 0 ? baseUrl : `${baseUrl}&gid=${i}`
+      const r = await fetch(url)
+      if (r.ok) {
+        const text = await r.text()
+        if (text && text.trim().length > 0) {
+          results.push(parseEstornoCSV(text))
+        }
+      }
+    } catch(e) {}
+  }
+  
+  // Merge e dedup por NUVEM
+  const all = results.flat()
+  const seen = new Set()
+  return all.filter(r => {
+    if (!r.nuvem || seen.has(r.nuvem)) return false
+    seen.add(r.nuvem)
+    return true
+  })
+}
+
+function parseEstornoCSV(text) {
+  const lines = text.trim().split('\n').filter(l => l.trim())
+  if (lines.length < 2) return []
+  
+  // Encontra linha de cabeçalho (contém "NUVEM" ou "DATA")
+  let hdrIdx = 0
+  for (let i = 0; i < Math.min(5, lines.length); i++) {
+    const l = lines[i].toUpperCase()
+    if (l.includes('NUVEM') || l.includes('DATA')) { hdrIdx = i; break }
+  }
+  
+  const sep = lines[hdrIdx].includes('\t') ? '\t' : ','
+  const hdrs = lines[hdrIdx].split(sep).map(h => h.trim().replace(/^["']|["']$/g,'').toUpperCase())
+  
+  const idx = {
+    nuvem:    hdrs.findIndex(h => h.includes('NUVEM')),
+    nf:       hdrs.findIndex(h => h === 'NF'),
+    cliente:  hdrs.findIndex(h => h.includes('CLIENTE')),
+    op:       hdrs.findIndex(h => h === 'OP' || h.includes('OPERAÇ')),
+    valor:    hdrs.findIndex(h => h.includes('VALOR')),
+    formaPag: hdrs.findIndex(h => h.includes('FORMA')),
+    autorizacao: hdrs.findIndex(h => h.includes('AUTORIZA')),
+    estornadoPor: hdrs.findIndex(h => h.includes('ESTORNADO')),
+  }
+  
+  if (idx.nuvem < 0) return []
+  
+  const g = (cols, i) => i >= 0 && i < cols.length ? cols[i].trim().replace(/^["']|["']$/g,'') : ''
+  
+  return lines.slice(hdrIdx + 1).map(line => {
+    const cols = line.split(sep)
+    const nuvem = g(cols, idx.nuvem)
+    if (!nuvem || !/^\d+$/.test(nuvem.replace(/\s/g,''))) return null
+    return {
+      nuvem: nuvem.trim(),
+      nf: g(cols, idx.nf),
+      cliente: g(cols, idx.cliente),
+      op: g(cols, idx.op),
+      valor: g(cols, idx.valor),
+      formaPag: g(cols, idx.formaPag),
+      autorizacao: g(cols, idx.autorizacao),
+      estornadoPor: g(cols, idx.estornadoPor),
+    }
+  }).filter(Boolean)
+}
+
 // ─── Permissões ───────────────────────────────────────────────
 const PERMS = {
-  admin:    {tabs:["dashboard","logistica","suporte","arquivados","usuarios"],canImport:true,canDelete:true,canClear:true,canSendSupport:true,canOperate:true},
-  logistica:{tabs:["dashboard","logistica"],canImport:true,canDelete:false,canClear:false,canSendSupport:true,canOperate:true},
+  admin:    {tabs:["dashboard","logistica","suporte","arquivados","estornos","usuarios"],canImport:true,canDelete:true,canClear:true,canSendSupport:true,canOperate:true},
+  logistica:{tabs:["dashboard","logistica","estornos"],canImport:true,canDelete:false,canClear:false,canSendSupport:true,canOperate:true},
   suporte:  {tabs:["suporte","arquivados"],canImport:false,canDelete:false,canClear:false,canSendSupport:false,canOperate:true},
   leitura:  {tabs:["dashboard","logistica","suporte","arquivados"],canImport:false,canDelete:false,canClear:false,canSendSupport:false,canOperate:false},
 }
 
-// ─── BUG FIX #1: ALERTA_DIAS movido para ANTES de QFILTERS ───
 const ALERTA_DIAS = 7
 
-// ─── Mapeamento de colunas expandido ─────────────────────────
 const HEADER_MAP = {
   nuvem:        ["identificador ecommerce","id ecommerce","no nuvem","nuvem","pedido"],
-  destinatario: [
-    "destinatário nome","destinatario nome","nome destinatário","nome destinatario",
-    "nome do destinatário","nome do destinatario","nome do cliente","nome do comprador",
-    "nome comprador","comprador","destinatário","destinatario","nome do pedido","nome",
-  ],
+  destinatario: ["destinatário nome","destinatario nome","nome destinatário","nome destinatario","nome do destinatário","nome do destinatario","nome do cliente","nome do comprador","nome comprador","comprador","destinatário","destinatario","nome do pedido","nome"],
   transportadora:["estratégia de frete","estrategia de frete","transportadora","frete"],
   rastreio:     ["rastreador last mile","código de rastreio","codigo de rastreio","rastreio","last mile"],
   status:       ["situação","situacao","situac","status"],
@@ -127,34 +228,14 @@ const norm    = s => (s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toL
 const findIdx = (hdrs, key) => {
   const aliases = HEADER_MAP[key] || []
   const nhdrs   = hdrs.map(norm)
-  // 1ª — exact match em qualquer alias
-  for (const v of aliases) {
-    const i = nhdrs.findIndex(h => h === norm(v))
-    if (i >= 0) return i
-  }
-  // 2ª — alias multi-palavra: cabeçalho contém a frase completa
-  for (const v of aliases.filter(v => norm(v).includes(" "))) {
-    const nv = norm(v)
-    const i  = nhdrs.findIndex(h => h.includes(nv))
-    if (i >= 0) return i
-  }
-  // 3ª — alias simples: cabeçalho COMEÇA COM o alias (evita "status prazo" casar com "prazo")
-  for (const v of aliases.filter(v => !norm(v).includes(" "))) {
-    const nv = norm(v)
-    const i  = nhdrs.findIndex(h => h.startsWith(nv + " ") || h.startsWith(nv + "_") || h === nv)
-    if (i >= 0) return i
-  }
-  // 4ª — último recurso: contains simples
-  for (const v of aliases.filter(v => !norm(v).includes(" "))) {
-    const nv = norm(v)
-    const i  = nhdrs.findIndex(h => h.includes(nv))
-    if (i >= 0) return i
-  }
+  for (const v of aliases) { const i = nhdrs.findIndex(h => h === norm(v)); if (i >= 0) return i }
+  for (const v of aliases.filter(v => norm(v).includes(" "))) { const nv = norm(v); const i = nhdrs.findIndex(h => h.includes(nv)); if (i >= 0) return i }
+  for (const v of aliases.filter(v => !norm(v).includes(" "))) { const nv = norm(v); const i = nhdrs.findIndex(h => h.startsWith(nv + " ") || h.startsWith(nv + "_") || h === nv); if (i >= 0) return i }
+  for (const v of aliases.filter(v => !norm(v).includes(" "))) { const nv = norm(v); const i = nhdrs.findIndex(h => h.includes(nv)); if (i >= 0) return i }
   return -1
 }
-const uniq   = arr => ["Todos",...Array.from(new Set(arr.filter(Boolean).sort()))]
+const uniq = arr => ["Todos",...Array.from(new Set(arr.filter(Boolean).sort()))]
 
-// BUG FIX #1 (cont): QFILTERS agora pode referenciar ALERTA_DIAS sem erro
 const QFILTERS = [
   {id:"todos",      label:"Todos"},
   {id:"urgente",    label:"Urgente"},
@@ -166,9 +247,6 @@ const QFILTERS = [
 ]
 const PAGE_SIZE = 50
 
-// ─── Helpers de cálculo ───────────────────────────────────────
-
-// BUG FIX #4: parseStatusPrazo estava sendo chamada mas nunca definida
 function parseStatusPrazo(raw) {
   if (!raw) return null
   const v = (raw||"").toLowerCase().trim()
@@ -177,7 +255,6 @@ function parseStatusPrazo(raw) {
   return null
 }
 
-// BUG FIX #2: isEntregue estava sem declaração function
 function isEntregue(status) {
   const s = (status||"").toLowerCase()
   return s.includes("entregue")||s.includes("finaliz")||s.includes("entrega realizada")
@@ -216,19 +293,14 @@ function calcMotivo(s) {
 function parsePrazo(v) {
   if (!v) return null
   const s = String(v).trim()
-  // DD/MM/YYYY ou D/M/YYYY (padrão brasileiro)
   const br = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
   if (br) return new Date(+br[3], +br[2]-1, +br[1])
-  // YYYY-MM-DD (ISO)
   const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/)
   if (iso) return new Date(+iso[1], +iso[2]-1, +iso[3])
-  // DD-MM-YYYY
   const dmy = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/)
   if (dmy) return new Date(+dmy[3], +dmy[2]-1, +dmy[1])
-  // DD.MM.YYYY
   const dot = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/)
   if (dot) return new Date(+dot[3], +dot[2]-1, +dot[1])
-  // Excel serial (número inteiro como 45678)
   const num = parseFloat(s)
   if (!isNaN(num) && num > 30000 && num < 100000)
     return new Date(Math.round((num - 25569) * 86400000))
@@ -237,25 +309,19 @@ function parsePrazo(v) {
 
 function calcUrg(prazo, status) {
   const s = (status||"").toLowerCase()
-  // ── Alta: situações críticas ──────────────────────────────
   if (s.includes("extravia")||s.includes("perdid"))                          return "Alta"
   if (s.includes("devolv")||s.includes("recusa"))                            return "Alta"
   if (s.includes("problema_entrega")||s.includes("problema entrega"))        return "Alta"
   if (s.includes("falha")||s.includes("retido")||s.includes("apreend"))     return "Alta"
-  // ── Baixa: entregue ou saindo para entrega ────────────────
   if (s.includes("entregue")||s.includes("finaliz"))                         return "Baixa"
-  if (s.includes("saiu_para_entrega")||s.includes("saiu para entrega")||
-      s.includes("saida_para_entrega")||s.includes("saiu"))                  return "Baixa"
-  // ── Média: etapas intermediárias ──────────────────────────
+  if (s.includes("saiu_para_entrega")||s.includes("saiu para entrega")||s.includes("saiu")) return "Baixa"
   if (s.includes("aguardando_retirada")||s.includes("aguardando retirada"))  return "Média"
   if (s.includes("triado")||s.includes("triagem"))                           return "Média"
-  if (s.includes("em_transito")||s.includes("em transito")||
-      s.includes("trânsito")||s.includes("transito"))                        return "Média"
+  if (s.includes("em_transito")||s.includes("em transito")||s.includes("trânsito")||s.includes("transito")) return "Média"
   if (s.includes("postado")||s.includes("coletado")||s.includes("colet"))   return "Média"
   if (s.includes("aguardando")||s.includes("processando"))                   return "Média"
-  // ── Fallback: calcular pelo prazo logístico ───────────────
   const dt = parsePrazo(prazo)
-  if (!dt) return "Média" // nunca retorna "—" — sem prazo = Média por padrão
+  if (!dt) return "Média"
   const h = new Date(); h.setHours(0,0,0,0)
   const d = Math.ceil((dt-h)/86400000)
   if (d<=1) return "Alta"; if (d<=3) return "Média"; return "Baixa"
@@ -287,7 +353,6 @@ function timeOpen(sentAt) {
   return {label:"< 1h",alert:false}
 }
 
-// BUG FIX #5 e #8: parseData corrigido — ix expandido + closing correto
 function parseData(text) {
   const sep = text.includes("\t")?"\t":text.includes(";")?";":","
   const lines = text.trim().split("\n").filter(l=>l.trim())
@@ -305,7 +370,6 @@ function parseData(text) {
     prazo:       isHdr?findIdx(hdrs,"prazo")         :5,
     nf:          isHdr?findIdx(hdrs,"nf")            :6,
     ultimaMov:   isHdr?findIdx(hdrs,"ultimaMov")     :-1,
-    // BUG FIX #8: campos novos mapeados
     cidade:      isHdr?findIdx(hdrs,"cidade")        :-1,
     uf:          isHdr?findIdx(hdrs,"uf")            :-1,
     cep:         isHdr?findIdx(hdrs,"cep")           :-1,
@@ -320,7 +384,7 @@ function parseData(text) {
     const entregue = isEntregue(status)
     const spRaw = g(c,ix.statusPrazo)
     const spVal = parseStatusPrazo(spRaw)
-    const dt = parsePrazo(prazo) // BUG FIX #8: dt declarado antes de uso em noPrazo
+    const dt = parsePrazo(prazo)
     const noPrazo = spVal!==null ? spVal : (entregue&&dt ? new Date()<=dt : null)
     return {
       id: Date.now()+i,
@@ -342,11 +406,11 @@ function parseData(text) {
       alertaStatus: null,
       obs:"", historico: entregue?[{acao:"Arquivado automaticamente — entrega concluída",ts:new Date().toLocaleString("pt-BR")}]:[],
       responsavel:"", sentAt:null, chamado:"", isNew:true,
+      estorno: null,
     }
-  }).filter(r=>r.nuvem||r.destinatario||r.nf) // BUG FIX #5: filter movido para dentro da função
+  }).filter(r=>r.nuvem||r.destinatario||r.nf)
 }
 
-// BUG FIX (applyQF): adicionado case "parados" que estava faltando
 function applyQF(rows, qf) {
   if (qf==="todos")       return rows
   if (qf==="urgente")     return rows.filter(r=>r.urgencia==="Alta")
@@ -358,7 +422,6 @@ function applyQF(rows, qf) {
   return rows
 }
 
-// BUG FIX #6: applySortRows — removido trailing ", [rows,...])" corrompido
 function applySortRows(rows, col, dir) {
   if (!col) return rows
   return [...rows].sort((a,b)=>{
@@ -406,14 +469,12 @@ function getTemplate(r, ch, nomeAtendente) {
   }
 }
 
-// ─── Classificação automática de problemas (NOVO) ────────────
 function classificarProblema(r) {
   const s = (r.status||"").toLowerCase()
   const dias = diasSemMov(r.ultimaMov)
   const dt = parsePrazo(r.prazo)
   const hoje = new Date(); hoje.setHours(0,0,0,0)
   const diasAtraso = dt ? Math.ceil((hoje-dt)/86400000) : 0
-
   if (s.includes("devolv")||s.includes("recusa"))                        return "DEVOLUCAO"
   if (s.includes("extravia")||s.includes("perdid"))                      return "EXTRAVIO"
   if (s.includes("falha")||(s.includes("tent")&&s.includes("entrega"))) return "ENDERECO"
@@ -422,44 +483,15 @@ function classificarProblema(r) {
   return "OK"
 }
 
-// Links das transportadoras — abre direto no site ao acionar
 const TRANSP_LINKS = {
-  "correios":          "https://rastreamento.correios.com.br",
-  "jadlog":            "https://www.jadlog.com.br/siteInstitucional/tracking.jad",
-  "loggi":             "https://www.loggi.com/rastreador/",
-  "total express":     "https://www.totalexpress.com.br/rastreio",
-  "sequoia":           "https://rastreamento.sequoialog.com.br",
-  "azul cargo":        "https://www.azulcargo.com.br/rastreio",
-  "latam cargo":       "https://www.latamcargo.com",
-  "jamef":             "https://www.jamef.com.br/rastreamento",
-  "fedex":             "https://www.fedex.com/pt-br/tracking.html",
-  "ups":               "https://www.ups.com/track",
-  "dhl":               "https://www.dhl.com/br-pt/home/tracking.html",
-  "tnt":               "https://www.tnt.com/express/pt_br/site/tracking.html",
-  "braspress":         "https://www.braspress.com/rastreio",
-  "rodonaves":         "https://www.rodonaves.com.br/rastreie-sua-carga",
-  "gollog":            "https://gollog.com.br/rastreio",
-  "rappi":             "https://www.rappi.com.br",
-  "ifood":             "https://www.ifood.com.br",
-  "kangu":             "https://kangu.com.br",
-  "shein":             "https://www.shein.com.br",
-  "shopee":            "https://shopee.com.br",
-  "melhor envio":      "https://melhorenvio.com.br/rastreio",
-  "frenet":            "https://www.frenet.com.br",
-  "mandae":            "https://www.mandae.com.br/rastreio",
-  "flash courier":     "https://www.flashcourier.com.br/rastreio",
-  "tudo vai":          "https://www.tudovai.com.br",
+  "correios":"https://rastreamento.correios.com.br","jadlog":"https://www.jadlog.com.br/siteInstitucional/tracking.jad","loggi":"https://www.loggi.com/rastreador/","total express":"https://www.totalexpress.com.br/rastreio","sequoia":"https://rastreamento.sequoialog.com.br","azul cargo":"https://www.azulcargo.com.br/rastreio","latam cargo":"https://www.latamcargo.com","jamef":"https://www.jamef.com.br/rastreamento","fedex":"https://www.fedex.com/pt-br/tracking.html","ups":"https://www.ups.com/track","dhl":"https://www.dhl.com/br-pt/home/tracking.html","tnt":"https://www.tnt.com/express/pt_br/site/tracking.html","braspress":"https://www.braspress.com/rastreio","rodonaves":"https://www.rodonaves.com.br/rastreie-sua-carga","gollog":"https://gollog.com.br/rastreio","melhor envio":"https://melhorenvio.com.br/rastreio","mandae":"https://www.mandae.com.br/rastreio","flash courier":"https://www.flashcourier.com.br/rastreio",
 }
 function getTranspLink(transportadora) {
   if (!transportadora) return null
   const t = norm(transportadora)
-  for (const [key, url] of Object.entries(TRANSP_LINKS)) {
-    if (t.includes(norm(key))) return url
-  }
-  // Fallback: busca no Google pela transportadora
+  for (const [key, url] of Object.entries(TRANSP_LINKS)) { if (t.includes(norm(key))) return url }
   return `https://www.google.com/search?q=${encodeURIComponent(transportadora + " rastreio contato")}`
 }
-
 
 const PROBLEMA_CONFIG = {
   ATRASO:            {label:"Atraso",           color:C.amber,bg:C.amberSoft, bd:C.amberBorder,icone:"⏰",sugestao:"Notificar cliente sobre o atraso na entrega"},
@@ -470,7 +502,6 @@ const PROBLEMA_CONFIG = {
   OK:                {label:"Sem pendências",    color:C.green,bg:C.greenSoft, bd:C.greenBorder,icone:"✓", sugestao:"Pedido sem problemas críticos identificados"},
 }
 
-// ─── Design Tokens para badges ───────────────────────────────
 const urgStyles = {
   Alta:  {bg:C.redSoft,  color:C.red,  bd:C.redBorder,  dot:"#e74c3c"},
   Média: {bg:C.amberSoft,color:C.amber,bd:C.amberBorder, dot:C.gold},
@@ -494,7 +525,6 @@ function Chip({val,styles}) {
   return <span style={{background:s.bg,color:s.color,border:`1px solid ${s.bd}`,borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:500,whiteSpace:"nowrap",letterSpacing:"0.02em"}}>{val}</span>
 }
 
-// BUG FIX #14: StatusBadge — bg:"#EBF5FB" era syntax error, corrigido para bg="#EBF5FB"
 function StatusBadge({val}) {
   const s = (val||"").toLowerCase()
   let bg=C.creamDark, color=C.text3, bd=C.border
@@ -514,10 +544,8 @@ function SlaCell({prazo}) {
   </div>
 }
 
-// Situação Prazo: Antes do Prazo / No Prazo / Atraso
 function SituacaoPrazoBadge({prazo, status, entregueNoPrazo}) {
   const dt = parsePrazo(prazo)
-  // Se veio do sistema (campo statusPrazo do Excel)
   if (entregueNoPrazo === true)  return <span style={{background:C.greenSoft,color:C.green,border:`1px solid ${C.greenBorder}`,borderRadius:10,padding:"2px 8px",fontSize:10,fontWeight:600}}>No Prazo</span>
   if (entregueNoPrazo === false) return <span style={{background:C.redSoft,color:C.red,border:`1px solid ${C.redBorder}`,borderRadius:10,padding:"2px 8px",fontSize:10,fontWeight:600}}>Atraso</span>
   if (!dt) return <span style={{background:C.creamDark,color:C.text4,border:`1px solid ${C.border}`,borderRadius:10,padding:"2px 8px",fontSize:10}}>—</span>
@@ -539,19 +567,19 @@ function SemMovBadge({ultimaMov}) {
   </div>
 }
 
-// BUG FIX #3: TimeOpenBadge estava sem declaração de função
 function TimeOpenBadge({sentAt}) {
   const info = timeOpen(sentAt)
   if (!info) return null
   return <span style={{background:info.alert?C.redSoft:C.amberSoft,color:info.alert?C.red:C.amber,border:`1px solid ${info.alert?C.redBorder:C.amberBorder}`,borderRadius:10,padding:"2px 8px",fontSize:10,fontWeight:500}}>{info.label}</span>
 }
 
-function KpiCard({label,val,sub,accent}) {
+function KpiCard({label,val,sub,accent,color}) {
+  const accentColor = color || C.red
   return <div style={{background:C.white,borderRadius:12,padding:"20px 22px",border:`1px solid ${accent?C.redBorder:C.border}`,boxShadow:shadow.sm,position:"relative",overflow:"hidden"}}>
-    {accent&&<div style={{position:"absolute",top:0,left:0,right:0,height:3,background:`linear-gradient(90deg,${C.red},#e74c3c88)`}}/>}
+    {accent&&<div style={{position:"absolute",top:0,left:0,right:0,height:3,background:`linear-gradient(90deg,${accentColor},${accentColor}88)`}}/>}
     {!accent&&<div style={{position:"absolute",top:0,left:0,right:0,height:2,background:`linear-gradient(90deg,${C.gold}44,${C.gold})`}}/>}
     <div style={{fontSize:9,color:C.text3,letterSpacing:"0.14em",textTransform:"uppercase",marginBottom:10,fontWeight:500}}>{label}</div>
-    <div style={{fontSize:28,fontWeight:600,color:accent?C.red:C.brand,letterSpacing:"-0.02em",lineHeight:1,marginBottom:6,fontFamily:"'Cormorant Garamond',serif"}}>{val}</div>
+    <div style={{fontSize:28,fontWeight:600,color:accent?accentColor:C.brand,letterSpacing:"-0.02em",lineHeight:1,marginBottom:6,fontFamily:"'Cormorant Garamond',serif"}}>{val}</div>
     {sub&&<div style={{fontSize:11,color:C.text3,fontWeight:400}}>{sub}</div>}
   </div>
 }
@@ -571,15 +599,129 @@ function SortIcon({col,sortCol,sortDir}) {
 
 function Toast({toasts}) {
   return <div style={{position:"fixed",bottom:24,right:24,display:"flex",flexDirection:"column",gap:8,zIndex:9999,pointerEvents:"none"}}>
-    {toasts.map(t=><div key={t.id} style={{background:t.type==="error"?C.red:t.type==="warn"?C.amber:C.green,color:C.white,borderRadius:10,padding:"12px 18px",fontSize:12,fontWeight:500,boxShadow:shadow.lg,maxWidth:320,lineHeight:1.5}}>{t.msg}</div>)}
+    {toasts.map(t=><div key={t.id} className="fade-in" style={{background:t.type==="error"?C.red:t.type==="warn"?C.amber:t.type==="purple"?C.purple:C.green,color:C.white,borderRadius:10,padding:"12px 18px",fontSize:12,fontWeight:500,boxShadow:shadow.lg,maxWidth:360,lineHeight:1.5}}>{t.msg}</div>)}
   </div>
 }
 
 const INP = {borderRadius:8,border:`1px solid ${C.border}`,padding:"9px 12px",fontSize:12,background:C.white,color:C.text1,outline:"none",transition:"border-color .2s"}
 
-// ─── Componentes de Suporte (NOVOS) ──────────────────────────
+// ─── NOVO: Badge de Estorno ────────────────────────────────────
+function EstornoBadge({estorno}) {
+  if (!estorno) return null
+  return (
+    <span style={{background:C.purpleSoft,color:C.purple,border:`1px solid ${C.purpleBorder}`,borderRadius:10,padding:"2px 8px",fontSize:10,fontWeight:700,whiteSpace:"nowrap",letterSpacing:"0.04em"}}>
+      ↩ Estorno
+    </span>
+  )
+}
 
-// HeaderProblema: identifica e destaca visualmente o tipo de problema
+// ─── NOVO: Painel de Detalhes da Logística ────────────────────
+function LogisticaDetalhePanel({r, onClose, perms, upd, nomeAtendente, addToast}) {
+  const transpUrl = getTranspLink(r.transportadora)
+  const sla = slaInfo(r.prazo)
+
+  return (
+    <div className="fade-in" style={{width:380,borderLeft:`1px solid ${C.border}`,background:C.white,display:"flex",flexDirection:"column",flexShrink:0,overflowY:"auto"}}>
+      {/* Header */}
+      <div style={{background:C.brand,padding:"16px 20px",position:"sticky",top:0,zIndex:5}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+          <div style={{fontSize:9,color:C.gold,letterSpacing:"0.18em",textTransform:"uppercase"}}>Detalhes do Pedido</div>
+          <button onClick={onClose} style={{background:"transparent",border:`1px solid #333`,color:"#666",cursor:"pointer",fontSize:14,width:28,height:28,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:6}}>×</button>
+        </div>
+        <div style={{fontSize:17,fontWeight:500,color:C.white,fontFamily:"'Cormorant Garamond',serif",marginBottom:2}}>{r.destinatario}</div>
+        <div style={{fontSize:11,color:`${C.gold}99`}}>#{r.nuvem}</div>
+      </div>
+
+      <div style={{padding:18,flex:1}}>
+        {/* Estorno alert */}
+        {r.estorno && (
+          <div style={{background:C.purpleSoft,border:`1px solid ${C.purpleBorder}`,borderRadius:10,padding:"10px 14px",marginBottom:14,display:"flex",alignItems:"flex-start",gap:10}}>
+            <span style={{fontSize:20}}>↩</span>
+            <div>
+              <div style={{fontSize:10,color:C.purple,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:3}}>Estorno identificado</div>
+              <div style={{fontSize:11,color:C.text1}}>OP: {r.estorno.op||"—"} · R$ {r.estorno.valor||"—"}</div>
+              <div style={{fontSize:10,color:C.text3,marginTop:2}}>Por: {r.estorno.estornadoPor||"—"}</div>
+            </div>
+          </div>
+        )}
+
+        {/* Rastreio em destaque */}
+        <div style={{background:C.brand,borderRadius:12,padding:"16px 18px",marginBottom:14}}>
+          <div style={{fontSize:8,color:`${C.gold}88`,textTransform:"uppercase",letterSpacing:"0.16em",marginBottom:6}}>Código de Rastreio</div>
+          {r.rastreio ? (
+            <>
+              <div style={{fontFamily:"monospace",fontSize:15,color:C.white,letterSpacing:"0.08em",marginBottom:10,wordBreak:"break-all"}}>{r.rastreio}</div>
+              <div style={{display:"flex",gap:8}}>
+                <CopyBtn text={r.rastreio} label="Copiar código"/>
+                {transpUrl && (
+                  <button onClick={()=>window.open(transpUrl,"_blank","noopener")}
+                    style={{flex:1,background:"transparent",border:`1px solid ${C.gold}55`,color:C.gold,borderRadius:6,padding:"5px 10px",fontSize:10,cursor:"pointer",fontWeight:500,letterSpacing:"0.04em"}}>
+                    Rastrear ↗
+                  </button>
+                )}
+              </div>
+            </>
+          ) : (
+            <div style={{fontSize:12,color:"#555",fontStyle:"italic"}}>Código não disponível</div>
+          )}
+        </div>
+
+        {/* Info grid */}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
+          {[
+            ["Transportadora", r.transportadora||"—"],
+            ["Status", <StatusBadge val={r.status}/>],
+            ["NF", r.nf||"—"],
+            ["Prazo", r.prazo||"—"],
+            ["Cidade/UF", [r.cidade,r.uf].filter(Boolean).join(" / ")||"—"],
+            ["CEP", r.cep||"—"],
+          ].map(([lbl,val])=>(
+            <div key={lbl} style={{background:C.cream,borderRadius:8,padding:"10px 12px"}}>
+              <div style={{fontSize:8,color:C.text4,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:4}}>{lbl}</div>
+              <div style={{fontSize:11,color:C.text1}}>{val}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* SLA */}
+        {sla && (
+          <div style={{background:sla.bg,border:`1px solid ${sla.bd}`,borderRadius:10,padding:"10px 14px",marginBottom:14,display:"flex",alignItems:"center",gap:10}}>
+            <div style={{width:8,height:8,borderRadius:"50%",background:sla.color,flexShrink:0}}/>
+            <div>
+              <div style={{fontSize:8,color:sla.color,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:700,marginBottom:1}}>Prazo logístico</div>
+              <div style={{fontSize:13,fontWeight:700,color:sla.color}}>{sla.label}</div>
+            </div>
+          </div>
+        )}
+
+        {/* Última movimentação */}
+        {r.ultimaMov && (
+          <div style={{background:C.cream,borderRadius:10,padding:"10px 14px",marginBottom:14}}>
+            <div style={{fontSize:8,color:C.text4,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:4}}>Última Movimentação</div>
+            <SemMovBadge ultimaMov={r.ultimaMov}/>
+          </div>
+        )}
+
+        {/* Urgência + Acionar */}
+        <div style={{display:"flex",gap:8,marginBottom:14}}>
+          <Chip val={r.urgencia} styles={urgStyles}/>
+          <Chip val={r.acionar} styles={acionStyles}/>
+          {r.estorno && <EstornoBadge estorno={r.estorno}/>}
+        </div>
+
+        {/* Observações */}
+        {perms?.canOperate && (
+          <div>
+            <div style={{fontSize:8,color:C.text4,textTransform:"uppercase",letterSpacing:"0.12em",marginBottom:6}}>Observações</div>
+            <textarea value={r.obs||""} onChange={e=>upd(r.id,{obs:e.target.value})} placeholder="Anotações..." rows={2}
+              style={{width:"100%",borderRadius:8,border:`1px solid ${C.border}`,padding:"9px 12px",fontSize:12,resize:"vertical",fontFamily:"inherit",background:C.white,color:C.text1,boxSizing:"border-box",lineHeight:1.6}}/>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function HeaderProblema({r, onNotificou}) {
   const tipo = classificarProblema(r)
   const cfg  = PROBLEMA_CONFIG[tipo]
@@ -623,7 +765,6 @@ function HeaderProblema({r, onNotificou}) {
   )
 }
 
-// SugestaoSistema: caixa de sugestão automática baseada no problema
 function SugestaoSistema({r}) {
   const tipo = classificarProblema(r)
   const cfg  = PROBLEMA_CONFIG[tipo]
@@ -639,18 +780,12 @@ function SugestaoSistema({r}) {
   )
 }
 
-// AcoesRapidas: botões de ação com feedback visual de loading
 function AcoesRapidas({r, perms, onNotificar, onAcionarTransp, onReenvio, onResolver, onDevolver}) {
   const [loading, setLoading] = useState(null)
   const tipo      = classificarProblema(r)
   const transpUrl = getTranspLink(r.transportadora)
-
-  const act = (key, fn) => async () => {
-    setLoading(key); try { await fn() } finally { setLoading(null) }
-  }
-
+  const act = (key, fn) => async () => { setLoading(key); try { await fn() } finally { setLoading(null) } }
   if (!perms?.canOperate) return null
-
   const btn = (key, label, style={}, onClick=null) => (
     <button key={key}
       onClick={onClick || act(key, {notif:onNotificar,transp:onAcionarTransp,reenv:onReenvio,resol:onResolver,dev:onDevolver}[key])}
@@ -659,22 +794,13 @@ function AcoesRapidas({r, perms, onNotificar, onAcionarTransp, onReenvio, onReso
       {loading===key?"⏳":label}
     </button>
   )
-
   return (
     <div style={{marginBottom:4}}>
       <div style={{fontSize:8,color:C.text3,textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:500,marginBottom:7}}>Ações rápidas</div>
       <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-        {btn("notif", "📧 Notificar Cliente", {background:C.brand,color:C.white})}
-        {/* Botão transportadora: registra ação + abre site da transportadora */}
-        <button
-          disabled={loading!==null}
-          onClick={async()=>{
-            setLoading("transp")
-            try { await onAcionarTransp() } finally { setLoading(null) }
-            if (transpUrl) window.open(transpUrl, "_blank", "noopener")
-          }}
-          title={transpUrl||""}
-          style={{flex:1,border:`1px solid ${C.blueBorder}`,borderRadius:8,padding:"9px 6px",fontSize:10,fontWeight:600,cursor:loading?"wait":"pointer",letterSpacing:"0.03em",transition:"all .2s",opacity:loading!==null&&loading!=="transp"?0.5:1,background:C.blueSoft,color:C.blue}}>
+        {btn("notif","📧 Notificar Cliente",{background:C.brand,color:C.white})}
+        <button disabled={loading!==null} onClick={async()=>{setLoading("transp");try{await onAcionarTransp()}finally{setLoading(null)};if(transpUrl)window.open(transpUrl,"_blank","noopener")}}
+          title={transpUrl||""} style={{flex:1,border:`1px solid ${C.blueBorder}`,borderRadius:8,padding:"9px 6px",fontSize:10,fontWeight:600,cursor:loading?"wait":"pointer",letterSpacing:"0.03em",transition:"all .2s",opacity:loading!==null&&loading!=="transp"?0.5:1,background:C.blueSoft,color:C.blue}}>
           {loading==="transp"?"⏳":`🚛 Acionar ${r.transportadora||"Transportadora"} ↗`}
         </button>
         {tipo==="DEVOLUCAO"&&btn("reenv","📦 Solicitar Reenvio",{background:C.amberSoft,color:C.amber,border:`1px solid ${C.amberBorder}`})}
@@ -686,7 +812,6 @@ function AcoesRapidas({r, perms, onNotificar, onAcionarTransp, onReenvio, onReso
   )
 }
 
-// TimelineHistorico: histórico em ordem reversa com usuário + ação
 function TimelineHistorico({historico, isOpen, onToggle}) {
   return (
     <div style={{background:C.white,borderRadius:12,border:`1px solid ${C.border}`,overflow:"hidden",boxShadow:shadow.sm}}>
@@ -852,6 +977,203 @@ function UsuariosPanel({token,addToast}) {
   )
 }
 
+// ─── NOVO: Painel de Estornos ─────────────────────────────────
+function EstornosPanel({token, rows, setRows, addToast, nomeAtendente}) {
+  const [sheetsUrl, setSheetsUrl] = useState("")
+  const [savedUrl, setSavedUrl] = useState("")
+  const [syncing, setSyncing] = useState(false)
+  const [lastSync, setLastSync] = useState(null)
+  const [estornos, setEstornos] = useState([])
+  const [syncResult, setSyncResult] = useState(null)
+  const [countdown, setCountdown] = useState(600)
+
+  useEffect(()=>{
+    loadEstornoConfig(token).then(url => {
+      if (url) { setSheetsUrl(url); setSavedUrl(url) }
+    })
+  },[token])
+
+  // Auto-sync a cada 10 minutos
+  useEffect(()=>{
+    if (!savedUrl) return
+    const run = () => doSync(savedUrl, false)
+    run()
+    const iv = setInterval(run, 600000)
+    const cd = setInterval(()=>setCountdown(p=>p>0?p-1:600),1000)
+    return ()=>{ clearInterval(iv); clearInterval(cd) }
+  },[savedUrl])
+
+  const doSync = async (url, showMsg=true) => {
+    if (!url) return
+    setSyncing(true)
+    try {
+      const data = await fetchEstornosFromSheets(url)
+      setEstornos(data)
+
+      // Cruzar com pedidos pelo NUVEM e arquivar automaticamente
+      let arquivados = 0, marcados = 0
+      const estornoMap = new Map(data.map(e=>[String(e.nuvem).trim(), e]))
+
+      setRows(prev => prev.map(r => {
+        const estr = estornoMap.get(String(r.nuvem||"").trim())
+        if (!estr) return {...r, estorno: null}
+        
+        const jaTemEstorno = r.estorno !== null && r.estorno !== undefined
+        const updates = { estorno: estr }
+        
+        if (r.atendimento !== "Resolvido") {
+          arquivados++
+          const ts = new Date().toLocaleString("pt-BR")
+          updates.atendimento = "Resolvido"
+          updates.historico = [...(r.historico||[]), {
+            acao: `Estorno identificado — arquivado automaticamente · OP: ${estr.op||"—"} · R$ ${estr.valor||"—"}`,
+            ts,
+            usuario: "Sistema"
+          }]
+        } else if (!jaTemEstorno) {
+          marcados++
+        }
+        return {...r, ...updates}
+      }))
+
+      setLastSync(new Date())
+      setSyncResult({total: data.length, arquivados, marcados})
+      setCountdown(600)
+
+      if (showMsg) {
+        if (arquivados > 0) addToast(`↩ ${arquivados} pedido${arquivados>1?"s":""} arquivado${arquivados>1?"s":""} por estorno`, "purple")
+        else addToast(`Planilha sincronizada · ${data.length} estornos encontrados`)
+      } else if (arquivados > 0) {
+        addToast(`↩ Auto-sync: ${arquivados} novo${arquivados>1?"s":""} estorno${arquivados>1?"s":""} arquivado${arquivados>1?"s":""}`, "purple")
+      }
+    } catch(e) {
+      addToast("Erro ao sincronizar planilha: "+e.message, "error")
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  const handleSave = async () => {
+    if (!sheetsUrl.trim()) return
+    await saveEstornoConfig(sheetsUrl.trim(), token)
+    setSavedUrl(sheetsUrl.trim())
+    addToast("URL salva! Iniciando sincronização...")
+    doSync(sheetsUrl.trim(), true)
+  }
+
+  const mins = Math.floor(countdown/60), secs = countdown%60
+  const estornadosNaBase = rows.filter(r=>r.estorno).length
+
+  return (
+    <div style={{padding:"32px 40px",maxWidth:900}}>
+      <div style={{marginBottom:28}}>
+        <div style={{fontSize:9,letterSpacing:"0.18em",textTransform:"uppercase",color:C.purple,marginBottom:6}}>Integração</div>
+        <div style={{fontSize:22,fontWeight:500,color:C.text1,fontFamily:"'Cormorant Garamond',serif",letterSpacing:"0.03em"}}>Planilha de Estornos</div>
+        <div style={{fontSize:12,color:C.text3,marginTop:6}}>Sincronização automática com o Google Sheets · cruza por número NUVEM</div>
+      </div>
+
+      {/* KPIs */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:24}}>
+        <KpiCard label="Estornos na planilha" val={estornos.length} sub="última sincronização"/>
+        <KpiCard label="Pedidos com estorno" val={estornadosNaBase} sub="cruzados na base" accent={estornadosNaBase>0} color={C.purple}/>
+        <KpiCard label="Próx. sync automático" val={savedUrl?`${mins}m${secs.toString().padStart(2,"0")}s`:"—"} sub={lastSync?`Último: ${lastSync.toLocaleTimeString("pt-BR")}`:"Não configurado"}/>
+      </div>
+
+      {/* Configuração da URL */}
+      <div style={{background:C.white,borderRadius:14,border:`1px solid ${C.border}`,padding:28,marginBottom:20,boxShadow:shadow.sm}}>
+        <div style={{fontSize:9,letterSpacing:"0.14em",textTransform:"uppercase",color:C.text3,marginBottom:16,fontWeight:500}}>Configuração da planilha</div>
+        
+        <div style={{background:C.purpleSoft,border:`1px solid ${C.purpleBorder}`,borderRadius:10,padding:"12px 16px",marginBottom:16,fontSize:11,color:C.purple,lineHeight:1.6}}>
+          <strong>Como configurar:</strong> No Google Sheets, vá em <strong>Arquivo → Compartilhar → Publicar na web</strong>, selecione a aba desejada, formato <strong>CSV</strong>, clique em <strong>Publicar</strong> e cole o link abaixo.
+        </div>
+
+        <div style={{display:"flex",gap:10,alignItems:"flex-end"}}>
+          <div style={{flex:1}}>
+            <label style={{fontSize:9,letterSpacing:"0.12em",textTransform:"uppercase",color:C.text3,fontWeight:500,display:"block",marginBottom:6}}>URL da planilha publicada</label>
+            <input value={sheetsUrl} onChange={e=>setSheetsUrl(e.target.value)} placeholder="https://docs.google.com/spreadsheets/d/e/.../pub?output=csv"
+              style={{...INP,width:"100%",boxSizing:"border-box",fontSize:11,fontFamily:"monospace"}}/>
+          </div>
+          <button onClick={handleSave} disabled={!sheetsUrl.trim()||syncing}
+            style={{background:sheetsUrl.trim()?C.purple:"#ccc",border:"none",color:C.white,borderRadius:8,padding:"9px 20px",fontSize:11,cursor:"pointer",fontWeight:500,letterSpacing:"0.08em",whiteSpace:"nowrap"}}>
+            Salvar e sincronizar
+          </button>
+        </div>
+
+        {savedUrl && (
+          <div style={{marginTop:12,display:"flex",alignItems:"center",gap:10}}>
+            <span style={{width:7,height:7,borderRadius:"50%",background:syncing?C.amber:C.green,display:"inline-block"}}/>
+            <span style={{fontSize:11,color:C.text3}}>{syncing?"Sincronizando...":lastSync?`Sincronizado às ${lastSync.toLocaleTimeString("pt-BR")}`:"Aguardando..."}</span>
+            <button onClick={()=>doSync(savedUrl,true)} disabled={syncing}
+              style={{marginLeft:"auto",background:C.cream,border:`1px solid ${C.border}`,color:C.text2,borderRadius:6,padding:"5px 14px",fontSize:10,cursor:"pointer",fontWeight:500}}>
+              {syncing?"⏳ Sincronizando...":"↻ Sincronizar agora"}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Resultado da última sync */}
+      {syncResult && (
+        <div style={{background:C.purpleSoft,border:`1px solid ${C.purpleBorder}`,borderRadius:12,padding:"16px 20px",marginBottom:20,display:"flex",gap:20,alignItems:"center"}}>
+          <span style={{fontSize:24}}>↩</span>
+          <div>
+            <div style={{fontSize:11,fontWeight:700,color:C.purple,marginBottom:4}}>Resultado da última sincronização</div>
+            <div style={{fontSize:12,color:C.text2}}>
+              <strong>{syncResult.total}</strong> estornos encontrados na planilha ·{" "}
+              <strong style={{color:syncResult.arquivados>0?C.purple:C.text3}}>{syncResult.arquivados}</strong> pedidos arquivados automaticamente
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tabela de estornos */}
+      {estornos.length > 0 && (
+        <div style={{background:C.white,borderRadius:14,border:`1px solid ${C.border}`,overflow:"hidden",boxShadow:shadow.sm}}>
+          <div style={{padding:"16px 22px",borderBottom:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <div style={{fontSize:9,fontWeight:500,color:C.text3,letterSpacing:"0.12em",textTransform:"uppercase"}}>Estornos carregados da planilha</div>
+            <div style={{fontSize:10,color:C.text4}}>{estornos.length} registros</div>
+          </div>
+          <div style={{overflowX:"auto",maxHeight:"50vh",overflowY:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+              <thead>
+                <tr style={{background:C.brand}}>
+                  {["NUVEM","Cliente","OP","Valor","Forma Pag.","Autorização","Estornado por","Status"].map(h=>(
+                    <th key={h} style={{padding:"10px 14px",textAlign:"left",color:C.gold,fontWeight:400,fontSize:9,letterSpacing:"0.12em",textTransform:"uppercase",whiteSpace:"nowrap",position:"sticky",top:0,background:C.brand}}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {estornos.map((e,i)=>{
+                  const pedido = rows.find(r=>String(r.nuvem).trim()===String(e.nuvem).trim())
+                  const arquivado = pedido?.atendimento==="Resolvido"
+                  return (
+                    <tr key={i} style={{background:i%2===0?C.white:C.cream,borderBottom:`1px solid ${C.border}55`}}>
+                      <td style={{padding:"10px 14px",fontWeight:700,color:C.purple}}>{e.nuvem}</td>
+                      <td style={{padding:"10px 14px",color:C.text1,maxWidth:150,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.cliente||"—"}</td>
+                      <td style={{padding:"10px 14px",color:C.text2,maxWidth:130,overflow:"hidden",textOverflow:"ellipsis"}} title={e.op}>{e.op||"—"}</td>
+                      <td style={{padding:"10px 14px",color:C.text1,fontWeight:500,whiteSpace:"nowrap"}}>{e.valor||"—"}</td>
+                      <td style={{padding:"10px 14px",color:C.text2}}>{e.formaPag||"—"}</td>
+                      <td style={{padding:"10px 14px",color:C.text2}}>{e.autorizacao||"—"}</td>
+                      <td style={{padding:"10px 14px",color:C.text2}}>{e.estornadoPor||"—"}</td>
+                      <td style={{padding:"10px 14px"}}>
+                        {!pedido
+                          ? <span style={{background:C.creamDark,color:C.text4,border:`1px solid ${C.border}`,borderRadius:10,padding:"2px 8px",fontSize:10}}>Não encontrado</span>
+                          : arquivado
+                            ? <span style={{background:C.greenSoft,color:C.green,border:`1px solid ${C.greenBorder}`,borderRadius:10,padding:"2px 8px",fontSize:10,fontWeight:600}}>✓ Arquivado</span>
+                            : <span style={{background:C.purpleSoft,color:C.purple,border:`1px solid ${C.purpleBorder}`,borderRadius:10,padding:"2px 8px",fontSize:10,fontWeight:600}}>Processando</span>
+                        }
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 const SAMPLE=`Identificador Ecommerce;Destinatário Nome;Estratégia de Frete;Rastreador Last Mile;Situação;Prazo Logístico;Nº Nota Fiscal
 12345;Ana Souza;Correios PAC;AA123456789BR;Em trânsito;05/05/2026;98765
 12346;Carlos Lima;Jadlog;JD987654321;Extraviado;28/04/2026;98766
@@ -872,19 +1194,28 @@ export default function App() {
   const [loadingData,setLoadingData]=useState(false)
   const [compact,setCompact]=useState(false)
   const [toasts,setToasts]=useState([])
+
+  // Logística filters
   const [lSrch,setLSrch]=useState(""); const [lSt,setLSt]=useState("Todos")
   const [lTr,setLTr]=useState("Todos"); const [lUrg,setLUrg]=useState("Todos")
   const [lAc,setLAc]=useState("Todos"); const [qf,setQf]=useState("todos")
   const [lPage,setLPage]=useState(1)
   const [selIds,setSelIds]=useState(new Set())
   const [sortCol,setSortCol]=useState(null); const [sortDir,setSortDir]=useState("asc")
+  // NOVO: detalhe da logística
+  const [logDetalhe,setLogDetalhe]=useState(null)
+
+  // Suporte filters — NOVO: filtro por responsável
   const [sSrch,setSSrch]=useState(""); const [sAtend,setSAtend]=useState("Todos")
-  const [sUrg,setSUrg]=useState("Todos")
+  const [sUrg,setSUrg]=useState("Todos"); const [sResp,setSResp]=useState("Todos")
   const [selSup,setSelSup]=useState(null)
   const [selSupIds,setSelSupIds]=useState(new Set())
   const [openTpl,setOpenTpl]=useState(false); const [openHist,setOpenHist]=useState(false)
+
+  // Arquivados
   const [aSrch,setASrch]=useState("")
   const [aPage,setAPage]=useState(1)
+
   const [syncStatus,setSyncStatus]=useState("idle")
   const [lastSync,setLastSync]=useState(null)
   const [countdown,setCountdown]=useState(10)
@@ -908,33 +1239,19 @@ export default function App() {
   const handleLogout = async () => { await signOut(token); setSession(null); setPerfil(null); setRows([]); setTab(null) }
   const perms = perfil?PERMS[perfil]:null
 
-  // BUG FIX #9: useEffect de carga inicial completamente reescrito
   useEffect(()=>{
     if (!token) return
-    setSyncStatus("loading")
-    setLoadingData(true)
-
+    setSyncStatus("loading"); setLoadingData(true)
     const fixRows = data => data.map(r=>({
       ...r, isNew:false,
-      atendimento:    isEntregue(r.status)&&!r.enviadoSuporte?"Resolvido":r.atendimento,
+      atendimento: isEntregue(r.status)&&!r.enviadoSuporte?"Resolvido":r.atendimento,
       enviadoSuporte: isEntregue(r.status)&&!r.enviadoSuporte?false:r.enviadoSuporte,
     }))
-
-    dbLoadFast(token, partial => {
-      setRows(fixRows(partial))
-      setLastSync(new Date())
-      setLoadingData(false)
-    }).then(data => {
-      if (data.length>0) { setRows(fixRows(data)); setLastSync(new Date()) }
-      setSyncStatus("idle"); setLoadingData(false)
-    }).catch(e => {
-      setSyncStatus("error")
-      addToast("Erro ao carregar: "+e.message,"error",8000)
-      setLoadingData(false)
-    })
+    dbLoadFast(token, partial => { setRows(fixRows(partial)); setLastSync(new Date()); setLoadingData(false) })
+      .then(data => { if (data.length>0) { setRows(fixRows(data)); setLastSync(new Date()) }; setSyncStatus("idle"); setLoadingData(false) })
+      .catch(e => { setSyncStatus("error"); addToast("Erro ao carregar: "+e.message,"error",8000); setLoadingData(false) })
   },[token])
 
-  // BUG FIX #10: polling usava dbLoad (inexistente) — corrigido para dbLoadFast
   useEffect(()=>{
     if (!token) return
     const poll = async () => {
@@ -944,14 +1261,9 @@ export default function App() {
         if (remote.length>0) {
           let nc=0
           setRows(prev=>{
-            const rm=new Map(remote.map(r=>[r.id,r]))
-            const lm=new Map(prev.map(r=>[r.id,r]))
-            const merged=[...rm.values()].map(r=>{
-              const loc=lm.get(r.id)
-              if (!loc){nc++;return{...r,isNew:true}}
-              return loc.historico.length>=r.historico.length?loc:{...r,isNew:false}
-            })
-            prev.forEach(r=>{if (!rm.has(r.id))merged.push(r)}); return merged
+            const rm=new Map(remote.map(r=>[r.id,r])); const lm=new Map(prev.map(r=>[r.id,r]))
+            const merged=[...rm.values()].map(r=>{const loc=lm.get(r.id);if(!loc){nc++;return{...r,isNew:true}};return loc.historico.length>=r.historico.length?loc:{...r,isNew:false}})
+            prev.forEach(r=>{if(!rm.has(r.id))merged.push(r)}); return merged
           })
           if (nc>0) addToast(`${nc} pedido${nc>1?"s":""} atualizado${nc>1?"s":""} por outro usuário`,"warn")
           setLastSync(new Date())
@@ -974,12 +1286,23 @@ export default function App() {
     },1200)
   },[rows,token,addToast])
 
-  useEffect(()=>{if (!rows.some(r=>r.isNew))return;const t=setTimeout(()=>setRows(p=>p.map(r=>({...r,isNew:false}))),6000);return()=>clearTimeout(t)},[rows])
+  useEffect(()=>{if(!rows.some(r=>r.isNew))return;const t=setTimeout(()=>setRows(p=>p.map(r=>({...r,isNew:false}))),6000);return()=>clearTimeout(t)},[rows])
   useEffect(()=>setLPage(1),[lSrch,lSt,lTr,lUrg,lAc,qf,sortCol,sortDir])
   useEffect(()=>setAPage(1),[aSrch])
   useEffect(()=>{setOpenTpl(false);setOpenHist(false)},[selSup])
+  // Fechar detalhe da logística ao mudar aba
+  useEffect(()=>setLogDetalhe(null),[tab])
 
-  // BUG FIX #7: doImport — removido trailing ", [rows,...])" corrompido
+  // ── NOVO #3: Auto-preencher responsável ao abrir pedido no suporte ──
+  useEffect(()=>{
+    if (!selSup || !nomeAtendente) return
+    setRows(prev => prev.map(r => {
+      if (r.id !== selSup) return r
+      if (r.responsavel && r.responsavel.trim()) return r // não sobrescreve se já preenchido
+      return { ...r, responsavel: nomeAtendente }
+    }))
+  },[selSup, nomeAtendente])
+
   const doImport = useCallback(txt=>{
     if (!perms?.canImport) return
     const parsed = parseData(txt)
@@ -1000,7 +1323,7 @@ export default function App() {
           if (idx>=0){
             const alertaStatus=existing.enviadoSuporte&&norm(existing.status)!==norm(novo.status)?`Status atualizado: ${existing.status} → ${novo.status}`:existing.alertaStatus
             const spVal=parseStatusPrazo(novo.statusPrazoRaw)
-            result[idx]={...novo,id:existing.id,obs:existing.obs,responsavel:existing.responsavel,chamado:existing.chamado,enviadoSuporte:existing.enviadoSuporte,atendimento:existing.enviadoSuporte?existing.atendimento:novo.atendimento,entregueNoPrazo:spVal!==null?spVal:novo.entregueNoPrazo,alertaStatus,historico:[...existing.historico,{acao:`Status atualizado: ${existing.status} → ${novo.status}`,ts:new Date().toLocaleString("pt-BR")}],isNew:true};updated++
+            result[idx]={...novo,id:existing.id,obs:existing.obs,responsavel:existing.responsavel,chamado:existing.chamado,enviadoSuporte:existing.enviadoSuporte,atendimento:existing.enviadoSuporte?existing.atendimento:novo.atendimento,entregueNoPrazo:spVal!==null?spVal:novo.entregueNoPrazo,alertaStatus,historico:[...existing.historico,{acao:`Status atualizado: ${existing.status} → ${novo.status}`,ts:new Date().toLocaleString("pt-BR")}],isNew:true,estorno:existing.estorno||null};updated++
           }
         }
       }
@@ -1062,7 +1385,7 @@ export default function App() {
     if (!perms?.canOperate) return
     const ts = new Date().toLocaleString("pt-BR")
     setRows(prev=>prev.map(r=>selIds.has(r.id)?{...r,atendimento:"Resolvido",enviadoSuporte:false,historico:[...r.historico,{acao:"Arquivado em lote pela Logística",ts,usuario:nomeAtendente}]}:r))
-    addToast(`${selIds.size} pedido${selIds.size>1?"s":""} arquivado${selIds.size>1?"s":""}`); clearSel()
+    addToast(`${selIds.size} pedido${selIds.size>1?"s":""} arquivado${selIds.size>1?"s":""}`) ; clearSel()
   }
   const toggleSort = col => {if (sortCol===col)setSortDir(d=>d==="asc"?"desc":"asc");else{setSortCol(col);setSortDir("asc")}}
 
@@ -1080,7 +1403,17 @@ export default function App() {
   const totalPages = Math.max(1,Math.ceil(filteredLog.length/PAGE_SIZE))
   const safeP      = Math.min(lPage,totalPages)
   const pagedLog   = filteredLog.slice((safeP-1)*PAGE_SIZE,safeP*PAGE_SIZE)
-  const supRows = baseSup.filter(r=>{const q=sSrch.toLowerCase();return(!q||[r.nuvem,r.destinatario,r.rastreio,r.status].some(v=>(v||"").toLowerCase().includes(q)))&&(sAtend==="Todos"||r.atendimento===sAtend)&&(sUrg==="Todos"||r.urgencia===sUrg)}).sort((a,b)=>{const uo={Alta:0,Média:1,Baixa:2,"—":3},ao={Aberto:0,"Em andamento":1};return(uo[a.urgencia]-uo[b.urgencia])||(ao[a.atendimento]-ao[b.atendimento])})
+
+  // NOVO #1: Filtro por responsável no suporte
+  const respOpts = uniq(baseSup.map(r=>r.responsavel).filter(Boolean))
+  const supRows = baseSup.filter(r=>{
+    const q=sSrch.toLowerCase()
+    return (!q||[r.nuvem,r.destinatario,r.rastreio,r.status].some(v=>(v||"").toLowerCase().includes(q)))
+      &&(sAtend==="Todos"||r.atendimento===sAtend)
+      &&(sUrg==="Todos"||r.urgencia===sUrg)
+      &&(sResp==="Todos"||r.responsavel===sResp)  // ← NOVO
+  }).sort((a,b)=>{const uo={Alta:0,Média:1,Baixa:2,"—":3},ao={Aberto:0,"Em andamento":1};return(uo[a.urgencia]-uo[b.urgencia])||(ao[a.atendimento]-ao[b.atendimento])})
+
   const archRows = baseArch.filter(r=>{const q=aSrch.toLowerCase();return!q||[r.nuvem,r.destinatario,r.transportadora,r.status].some(v=>(v||"").toLowerCase().includes(q))}).sort((a,b)=>{const ta=(a.historico.find(h=>h.acao&&(h.acao.includes("Resolvido")||h.acao.includes("Arquivado")))||{}).ts||"";const tb=(b.historico.find(h=>h.acao&&(h.acao.includes("Resolvido")||h.acao.includes("Arquivado")))||{}).ts||"";return tb.localeCompare(ta)})
 
   const stOpts=uniq(baseLog.map(r=>r.status)), trOpts=uniq(baseLog.map(r=>r.transportadora))
@@ -1093,8 +1426,8 @@ export default function App() {
   const pctNoPrazo = entregues.length>0?Math.round((noPrazo/entregues.length)*100):0
   const hoje       = new Date(); hoje.setHours(0,0,0,0)
   const parados    = baseLog.filter(r=>{const d=diasSemMov(r.ultimaMov);return d!==null&&d>=ALERTA_DIAS}).length
+  const comEstorno = rows.filter(r=>r.estorno).length
 
-  // BUG FIX #11: const trStats={} estava faltando; BUG FIX #13: forEach sem trailing lixo
   const trStats={}
   rows.forEach(r=>{
     if (!r.transportadora) return
@@ -1105,8 +1438,6 @@ export default function App() {
   })
   const trData    = Object.entries(trStats).map(([name,s])=>({name,total:s.total,entregues:s.entregues,noPrazo:s.noPrazo,foraPrazo:s.foraPrazo,vencidos:s.vencidos,pct:s.entregues>0?Math.round((s.noPrazo/s.entregues)*100):0})).sort((a,b)=>b.total-a.total).slice(0,8)
   const trBarData = trData.map(t=>({name:t.name,"No prazo":t.noPrazo,"Fora prazo":t.foraPrazo,"Vencidos":t.vencidos}))
-
-  // BUG FIX #12: ufStats forEach sem trailing lixo
   const ufStats={}
   rows.forEach(r=>{
     const uf=(r.uf||"").toUpperCase().trim(); if (!uf||uf.length>3) return
@@ -1127,9 +1458,19 @@ export default function App() {
   const PERFLABEL={admin:"Admin",logistica:"Logística",suporte:"Suporte",leitura:"Leitura"}
   const syncDot  = syncStatus==="error"?C.red:syncStatus==="saving"?C.gold:syncStatus==="saved"?"#27ae60":"#555"
   const syncText = syncStatus==="loading"?"Carregando...":syncStatus==="saving"?"Salvando...":syncStatus==="saved"?"Sincronizado ✓":syncStatus==="error"?"Erro":lastSync?`Sync em ${countdown}s`:""
-  const TABS=[{key:"dashboard",label:"Dashboard",badge:null},{key:"logistica",label:"Logística",badge:st.acionar>0?st.acionar:null},{key:"suporte",label:"Suporte",badge:ss.abertos>0?ss.abertos:null},{key:"arquivados",label:"Arquivados",badge:arch>0?arch:null},{key:"usuarios",label:"Usuários",badge:null}].filter(t=>perms?.tabs.includes(t.key))
+  const TABS=[
+    {key:"dashboard",label:"Dashboard",badge:null},
+    {key:"logistica",label:"Logística",badge:st.acionar>0?st.acionar:null},
+    {key:"suporte",label:"Suporte",badge:ss.abertos>0?ss.abertos:null},
+    {key:"arquivados",label:"Arquivados",badge:arch>0?arch:null},
+    {key:"estornos",label:"Estornos",badge:comEstorno>0?comEstorno:null,purple:true},
+    {key:"usuarios",label:"Usuários",badge:null}
+  ].filter(t=>perms?.tabs.includes(t.key))
   const TH  = {padding:`${compact?8:11}px 14px`,textAlign:"left",color:C.gold,fontWeight:400,fontSize:9,letterSpacing:"0.14em",textTransform:"uppercase",borderBottom:`1px solid #2A2A2A`,whiteSpace:"nowrap",background:C.brand,position:"sticky",top:0,zIndex:5,cursor:"pointer"}
   const THF = {...TH,cursor:"default"}
+
+  // Pedido em detalhe na logística
+  const logDetalheRow = logDetalhe ? pagedLog.find(r=>r.id===logDetalhe) || filteredLog.find(r=>r.id===logDetalhe) : null
 
   return (
     <div style={{fontFamily:"'Inter',sans-serif",minHeight:"100vh",background:C.cream}}>
@@ -1158,9 +1499,7 @@ export default function App() {
             </>
           )}
           {perms?.canClear&&rows.length>0&&(
-            <button onClick={handleClearAll} style={{background:"transparent",border:`1px solid #333`,color:"#555",borderRadius:6,padding:"6px 14px",fontSize:10,cursor:"pointer",letterSpacing:"0.06em"}}>
-              Limpar tudo
-            </button>
+            <button onClick={handleClearAll} style={{background:"transparent",border:`1px solid #333`,color:"#555",borderRadius:6,padding:"6px 14px",fontSize:10,cursor:"pointer",letterSpacing:"0.06em"}}>Limpar tudo</button>
           )}
           <div style={{width:1,height:28,background:"#2A2A2A"}}/>
           <div style={{textAlign:"right"}}>
@@ -1177,9 +1516,9 @@ export default function App() {
         <div style={{background:C.white,borderBottom:`1px solid ${C.border}`,padding:"0 32px",display:"flex",alignItems:"stretch",boxShadow:"0 1px 0 rgba(0,0,0,0.04)"}}>
           {TABS.map(t=>(
             <button key={t.key} onClick={()=>{setTab(t.key);if(t.key!=="suporte")setSelSup(null)}}
-              style={{background:"transparent",border:"none",borderBottom:tab===t.key?`2px solid ${C.gold}`:"2px solid transparent",color:tab===t.key?C.text1:C.text3,padding:"14px 20px",cursor:"pointer",fontSize:10,letterSpacing:"0.14em",textTransform:"uppercase",fontWeight:tab===t.key?500:400,marginBottom:"-1px",display:"flex",alignItems:"center",gap:8,transition:"color .2s"}}>
+              style={{background:"transparent",border:"none",borderBottom:tab===t.key?`2px solid ${t.purple?C.purple:C.gold}`:"2px solid transparent",color:tab===t.key?C.text1:C.text3,padding:"14px 20px",cursor:"pointer",fontSize:10,letterSpacing:"0.14em",textTransform:"uppercase",fontWeight:tab===t.key?500:400,marginBottom:"-1px",display:"flex",alignItems:"center",gap:8,transition:"color .2s"}}>
               {t.label}
-              {t.badge!=null&&<span style={{background:tab===t.key?C.brand:C.red,color:C.white,borderRadius:10,padding:"2px 7px",fontSize:9,fontWeight:600,letterSpacing:"0.04em"}}>{t.badge}</span>}
+              {t.badge!=null&&<span style={{background:tab===t.key?(t.purple?C.purple:C.brand):(t.purple?C.purple:C.red),color:C.white,borderRadius:10,padding:"2px 7px",fontSize:9,fontWeight:600,letterSpacing:"0.04em"}}>{t.badge}</span>}
             </button>
           ))}
         </div>
@@ -1220,6 +1559,9 @@ export default function App() {
       {/* ── USUÁRIOS ── */}
       {tab==="usuarios"&&perfil==="admin"&&<UsuariosPanel token={token} addToast={addToast}/>}
 
+      {/* ── ESTORNOS ── */}
+      {tab==="estornos"&&<EstornosPanel token={token} rows={rows} setRows={setRows} addToast={addToast} nomeAtendente={nomeAtendente}/>}
+
       {/* ── DASHBOARD ── */}
       {tab==="dashboard"&&!showImp&&(
         <div style={{padding:"28px 40px"}}>
@@ -1227,13 +1569,14 @@ export default function App() {
             <div style={{fontSize:9,letterSpacing:"0.18em",textTransform:"uppercase",color:C.gold,marginBottom:4}}>Visão geral</div>
             <div style={{fontSize:22,fontWeight:500,color:C.text1,fontFamily:"'Cormorant Garamond',serif",letterSpacing:"0.03em"}}>Dashboard Operacional</div>
           </div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:12,marginBottom:20}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:12,marginBottom:20}}>
             {[
               {label:"Total de pedidos",        val:rows.length,     sub:"na base de dados"},
               {label:"Em logística",             val:st.log,          sub:`${st.acionar} acionam suporte`},
               {label:"No suporte",               val:ss.total,        sub:`${ss.abertos} abertos`,accent:ss.abertos>0},
               {label:`Parados +${ALERTA_DIAS}d`, val:parados,         sub:"sem movimentação",accent:parados>0},
               {label:"Entrega no prazo",         val:`${pctNoPrazo}%`,sub:`${noPrazo} de ${entregues.length} entregues`},
+              {label:"Com estorno",              val:comEstorno,      sub:"identificados",accent:comEstorno>0,color:C.purple},
             ].map(k=><KpiCard key={k.label} {...k}/>)}
           </div>
           {rows.length===0?<div style={{textAlign:"center",padding:64,color:C.text4}}>Importe dados para visualizar os gráficos</div>:(
@@ -1247,9 +1590,9 @@ export default function App() {
                       <XAxis type="number" tick={{fontSize:9,fill:C.text4}} axisLine={false} tickLine={false}/>
                       <YAxis type="category" dataKey="name" width={90} tick={{fontSize:10,fill:C.text3}} axisLine={false} tickLine={false}/>
                       <Tooltip contentStyle={{fontSize:11,border:`1px solid ${C.border}`,borderRadius:8,boxShadow:shadow.md}}/>
-                      <Bar dataKey="No prazo"   stackId="a" fill={C.green} name="No prazo"/>
-                      <Bar dataKey="Fora prazo" stackId="a" fill={C.amber} name="Fora prazo"/>
-                      <Bar dataKey="Vencidos"   stackId="a" fill={C.red}   name="Vencidos" radius={[0,4,4,0]}/>
+                      <Bar dataKey="No prazo"   stackId="a" fill={C.green}/>
+                      <Bar dataKey="Fora prazo" stackId="a" fill={C.amber}/>
+                      <Bar dataKey="Vencidos"   stackId="a" fill={C.red} radius={[0,4,4,0]}/>
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -1313,7 +1656,7 @@ export default function App() {
                         <td style={{padding:"11px 18px"}}>
                           <div style={{display:"flex",alignItems:"center",gap:10}}>
                             <div style={{flex:1,height:5,background:C.creamDark,borderRadius:3,overflow:"hidden"}}>
-                              <div style={{height:"100%",width:`${t.pct}%`,background:t.pct>=80?C.green:t.pct>=60?C.amber:C.red,borderRadius:3,transition:"width .6s"}}/>
+                              <div style={{height:"100%",width:`${t.pct}%`,background:t.pct>=80?C.green:t.pct>=60?C.amber:C.red,borderRadius:3}}/>
                             </div>
                             <span style={{fontSize:11,fontWeight:600,color:t.pct>=80?C.green:t.pct>=60?C.amber:C.red,minWidth:34}}>{t.pct}%</span>
                           </div>
@@ -1341,102 +1684,114 @@ export default function App() {
 
       {/* ── LOGÍSTICA ── */}
       {tab==="logistica"&&!showImp&&(
-        <div style={{padding:"24px 32px"}}>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:20}}>
-            <KpiCard label="Em logística"    val={st.log}/>
-            <KpiCard label="Urgência alta"   val={st.alta}    accent={st.alta>0}/>
-            <KpiCard label="Acionar suporte" val={st.acionar} accent={st.acionar>0}/>
-          </div>
-          <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
-            {QFILTERS.map(f=>(
-              <button key={f.id} onClick={()=>{setQf(f.id);clearSel()}}
-                style={{background:qf===f.id?C.brand:C.white,border:`1px solid ${qf===f.id?C.brand:C.border}`,color:qf===f.id?C.white:C.text2,borderRadius:20,padding:"5px 14px",fontSize:10,cursor:"pointer",fontWeight:qf===f.id?500:400,letterSpacing:"0.06em",boxShadow:qf===f.id?"none":shadow.sm,transition:"all .2s"}}>
-                {f.label}{f.id!=="todos"?` (${qCounts[f.id]||0})`:""}
-              </button>
-            ))}
-          </div>
-          <div style={{background:C.white,borderRadius:10,border:`1px solid ${C.border}`,padding:"12px 16px",marginBottom:14,display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",boxShadow:shadow.sm}}>
-            <input value={lSrch} onChange={e=>setLSrch(e.target.value)} placeholder="Buscar pedido, destinatário, rastreio..." style={{...INP,flex:1,minWidth:160}}/>
-            <select value={lSt}  onChange={e=>setLSt(e.target.value)}  style={INP}>{stOpts.map(o=><option key={o}>{o}</option>)}</select>
-            <select value={lTr}  onChange={e=>setLTr(e.target.value)}  style={INP}>{trOpts.map(o=><option key={o}>{o}</option>)}</select>
-            <select value={lUrg} onChange={e=>setLUrg(e.target.value)} style={INP}>{["Todos","Alta","Média","Baixa","—"].map(o=><option key={o}>{o}</option>)}</select>
-            <select value={lAc}  onChange={e=>setLAc(e.target.value)}  style={INP}>{["Todos","Sim","Avaliar","Não"].map(o=><option key={o}>{o}</option>)}</select>
-            {(lSrch||lSt!=="Todos"||lTr!=="Todos"||lUrg!=="Todos"||lAc!=="Todos")&&<button onClick={()=>{setLSrch("");setLSt("Todos");setLTr("Todos");setLUrg("Todos");setLAc("Todos")}} style={{...INP,cursor:"pointer",color:C.red,borderColor:C.redBorder,background:C.redSoft}}>× Limpar</button>}
-          </div>
-          {perms?.canSendSupport&&selIds.size>0&&(
-            <div style={{background:C.brand,borderRadius:10,padding:"12px 20px",marginBottom:14,display:"flex",alignItems:"center",gap:10,boxShadow:shadow.md}}>
-              <span style={{color:"#888",fontSize:12,flex:1}}>{selIds.size} pedido{selIds.size>1?"s":""} selecionado{selIds.size>1?"s":""}</span>
-              <button onClick={bulkSend} style={{background:C.gold,border:"none",color:C.white,borderRadius:7,padding:"8px 18px",fontSize:11,cursor:"pointer",fontWeight:500,letterSpacing:"0.08em"}}>Enviar ao Suporte ({selIds.size})</button>
-              {perms?.canOperate&&<button onClick={bulkArchiveFromLog} style={{background:C.green,border:"none",color:C.white,borderRadius:7,padding:"8px 18px",fontSize:11,cursor:"pointer",fontWeight:500,letterSpacing:"0.08em"}}>✓ Arquivar ({selIds.size})</button>}
-              <button onClick={clearSel} style={{background:"transparent",border:`1px solid #333`,color:"#666",borderRadius:7,padding:"8px 14px",fontSize:11,cursor:"pointer"}}>Cancelar</button>
+        <div style={{display:"flex",minHeight:"calc(100vh - 110px)"}}>
+          <div style={{flex:1,padding:"24px 32px",minWidth:0}}>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:20}}>
+              <KpiCard label="Em logística"    val={st.log}/>
+              <KpiCard label="Urgência alta"   val={st.alta}    accent={st.alta>0}/>
+              <KpiCard label="Acionar suporte" val={st.acionar} accent={st.acionar>0}/>
             </div>
-          )}
-          <div style={{overflowX:"auto",overflowY:"auto",maxHeight:"54vh",borderRadius:12,border:`1px solid ${C.border}`,boxShadow:shadow.sm}}>
-            <table style={{width:"100%",borderCollapse:"collapse",fontSize:compact?11:12,tableLayout:"fixed",minWidth:1100}}>
-              <colgroup>
-                <col style={{width:36}}/>
-                <col style={{width:92}}/>
-                <col style={{width:155}}/>
-                <col style={{width:130}}/>
-                <col style={{width:135}}/>
-                <col style={{width:92}}/>
-                <col style={{width:130}}/>
-                <col style={{width:80}}/>
-                <col style={{width:145}}/>
-                <col style={{width:118}}/>
-                <col style={{width:36}}/>
-              </colgroup>
-              <thead>
-                <tr>
-                  <th style={THF}>{perms?.canSendSupport&&<input type="checkbox" onChange={e=>e.target.checked?setSelIds(new Set(pagedLog.map(r=>r.id))):clearSel()} checked={selIds.size>0&&pagedLog.every(r=>selIds.has(r.id))} style={{cursor:"pointer",accentColor:C.gold}}/>}</th>
-                  {[["nuvem","No NUVEM"],["destinatario","Destinatário"],["transportadora","Transportadora"],["status","Status"],["prazo","Prazo Logístico"],["situacaoPrazo","Situação Prazo"],["urgencia","Urgência"],["ultimaMov","Últ. Movimentação"]].map(([col,label])=>(
-                    <th key={col} onClick={()=>toggleSort(col)} style={TH}>{label}<SortIcon col={col} sortCol={sortCol} sortDir={sortDir}/></th>
-                  ))}
-                  <th style={THF}>Ação</th>
-                  <th style={THF}/>
-                </tr>
-              </thead>
-              <tbody>
-                {pagedLog.length===0?<tr><td colSpan={11} style={{textAlign:"center",padding:36,color:C.text4}}>Nenhum pedido encontrado</td></tr>
-                :pagedLog.map((r,i)=>(
-                  <tr key={r.id} style={{background:r.isNew?`${C.gold}14`:i%2===0?C.white:C.cream,borderBottom:`1px solid ${C.border}66`,outline:r.isNew?`1px solid ${C.gold}44`:"none"}}>
-                    <td style={{padding:`${pd}px 8px`,textAlign:"center"}}>{perms?.canSendSupport&&<input type="checkbox" checked={selIds.has(r.id)} onChange={()=>toggleSel(r.id)} style={{cursor:"pointer",accentColor:C.gold}}/>}</td>
-                    <td style={{padding:`${pd}px 14px`,fontWeight:600,color:C.text1,fontSize:11}}>{r.nuvem}</td>
-                    <td style={{padding:`${pd}px 14px`,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:C.text1}} title={r.destinatario}>{r.destinatario}</td>
-                    <td style={{padding:`${pd}px 14px`,color:C.text2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={r.transportadora}>{r.transportadora}</td>
-                    <td style={{padding:`${pd}px 10px`}}><StatusBadge val={r.status}/></td>
-                    <td style={{padding:`${pd}px 14px`,fontSize:11,color:C.text2,whiteSpace:"nowrap"}}>{r.prazo||"—"}</td>
-                    <td style={{padding:`${pd}px 10px`}}><SituacaoPrazoBadge prazo={r.prazo} status={r.status} entregueNoPrazo={r.entregueNoPrazo}/></td>
-                    <td style={{padding:`${pd}px 10px`}}><Chip val={r.urgencia} styles={urgStyles}/></td>
-                    <td style={{padding:`${pd}px 14px`}}><SemMovBadge ultimaMov={r.ultimaMov}/></td>
-                    <td style={{padding:`${pd}px 8px`}}>{perms?.canSendSupport&&(
-                      <div style={{display:"flex",gap:4}}>
-                        <button onClick={()=>upd(r.id,{enviadoSuporte:true,atendimento:"Aberto",sentAt:new Date().toISOString()},{acao:"Enviado ao suporte"})} style={{flex:1,background:C.cream,border:`1px solid ${C.border}`,color:C.text2,borderRadius:6,padding:"4px 6px",fontSize:9,cursor:"pointer",fontWeight:500,whiteSpace:"nowrap"}}>Suporte →</button>
-                        {perms?.canOperate&&<button onClick={()=>handleArchiveFromLog(r.id)} style={{flex:1,background:C.greenSoft,border:`1px solid ${C.greenBorder}`,color:C.green,borderRadius:6,padding:"4px 6px",fontSize:9,cursor:"pointer",fontWeight:600,whiteSpace:"nowrap"}}>✓ Arq.</button>}
-                      </div>
-                    )}</td>
-                    <td style={{padding:`${pd}px 8px`,textAlign:"center"}}>{perms?.canDelete&&<button onClick={()=>del(r.id)} style={{background:"transparent",border:"none",color:C.text4,cursor:"pointer",fontSize:14}}>×</button>}</td>
+            <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
+              {QFILTERS.map(f=>(
+                <button key={f.id} onClick={()=>{setQf(f.id);clearSel()}}
+                  style={{background:qf===f.id?C.brand:C.white,border:`1px solid ${qf===f.id?C.brand:C.border}`,color:qf===f.id?C.white:C.text2,borderRadius:20,padding:"5px 14px",fontSize:10,cursor:"pointer",fontWeight:qf===f.id?500:400,letterSpacing:"0.06em",boxShadow:qf===f.id?"none":shadow.sm,transition:"all .2s"}}>
+                  {f.label}{f.id!=="todos"?` (${qCounts[f.id]||0})`:""}
+                </button>
+              ))}
+            </div>
+            <div style={{background:C.white,borderRadius:10,border:`1px solid ${C.border}`,padding:"12px 16px",marginBottom:14,display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",boxShadow:shadow.sm}}>
+              <input value={lSrch} onChange={e=>setLSrch(e.target.value)} placeholder="Buscar pedido, destinatário, rastreio..." style={{...INP,flex:1,minWidth:160}}/>
+              <select value={lSt}  onChange={e=>setLSt(e.target.value)}  style={INP}>{stOpts.map(o=><option key={o}>{o}</option>)}</select>
+              <select value={lTr}  onChange={e=>setLTr(e.target.value)}  style={INP}>{trOpts.map(o=><option key={o}>{o}</option>)}</select>
+              <select value={lUrg} onChange={e=>setLUrg(e.target.value)} style={INP}>{["Todos","Alta","Média","Baixa","—"].map(o=><option key={o}>{o}</option>)}</select>
+              <select value={lAc}  onChange={e=>setLAc(e.target.value)}  style={INP}>{["Todos","Sim","Avaliar","Não"].map(o=><option key={o}>{o}</option>)}</select>
+              {(lSrch||lSt!=="Todos"||lTr!=="Todos"||lUrg!=="Todos"||lAc!=="Todos")&&<button onClick={()=>{setLSrch("");setLSt("Todos");setLTr("Todos");setLUrg("Todos");setLAc("Todos")}} style={{...INP,cursor:"pointer",color:C.red,borderColor:C.redBorder,background:C.redSoft}}>× Limpar</button>}
+            </div>
+            {perms?.canSendSupport&&selIds.size>0&&(
+              <div style={{background:C.brand,borderRadius:10,padding:"12px 20px",marginBottom:14,display:"flex",alignItems:"center",gap:10,boxShadow:shadow.md}}>
+                <span style={{color:"#888",fontSize:12,flex:1}}>{selIds.size} pedido{selIds.size>1?"s":""} selecionado{selIds.size>1?"s":""}</span>
+                <button onClick={bulkSend} style={{background:C.gold,border:"none",color:C.white,borderRadius:7,padding:"8px 18px",fontSize:11,cursor:"pointer",fontWeight:500,letterSpacing:"0.08em"}}>Enviar ao Suporte ({selIds.size})</button>
+                {perms?.canOperate&&<button onClick={bulkArchiveFromLog} style={{background:C.green,border:"none",color:C.white,borderRadius:7,padding:"8px 18px",fontSize:11,cursor:"pointer",fontWeight:500,letterSpacing:"0.08em"}}>✓ Arquivar ({selIds.size})</button>}
+                <button onClick={clearSel} style={{background:"transparent",border:`1px solid #333`,color:"#666",borderRadius:7,padding:"8px 14px",fontSize:11,cursor:"pointer"}}>Cancelar</button>
+              </div>
+            )}
+            <div style={{overflowX:"auto",overflowY:"auto",maxHeight:"54vh",borderRadius:12,border:`1px solid ${C.border}`,boxShadow:shadow.sm}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:compact?11:12,tableLayout:"fixed",minWidth:1100}}>
+                <colgroup>
+                  <col style={{width:36}}/><col style={{width:88}}/><col style={{width:145}}/><col style={{width:120}}/><col style={{width:125}}/><col style={{width:85}}/><col style={{width:120}}/><col style={{width:75}}/><col style={{width:135}}/><col style={{width:105}}/><col style={{width:36}}/>
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th style={THF}>{perms?.canSendSupport&&<input type="checkbox" onChange={e=>e.target.checked?setSelIds(new Set(pagedLog.map(r=>r.id))):clearSel()} checked={selIds.size>0&&pagedLog.every(r=>selIds.has(r.id))} style={{cursor:"pointer",accentColor:C.gold}}/>}</th>
+                    {[["nuvem","No NUVEM"],["destinatario","Destinatário"],["transportadora","Transportadora"],["status","Status"],["prazo","Prazo Logístico"],["situacaoPrazo","Situação Prazo"],["urgencia","Urgência"],["ultimaMov","Últ. Mov."]].map(([col,label])=>(
+                      <th key={col} onClick={()=>toggleSort(col)} style={TH}>{label}<SortIcon col={col} sortCol={sortCol} sortDir={sortDir}/></th>
+                    ))}
+                    <th style={THF}>Ação</th>
+                    <th style={THF}/>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {pagedLog.length===0?<tr><td colSpan={11} style={{textAlign:"center",padding:36,color:C.text4}}>Nenhum pedido encontrado</td></tr>
+                  :pagedLog.map((r,i)=>(
+                    <tr key={r.id} style={{background:r.isNew?`${C.gold}14`:logDetalhe===r.id?`${C.gold}10`:i%2===0?C.white:C.cream,borderBottom:`1px solid ${C.border}66`,outline:logDetalhe===r.id?`1px solid ${C.gold}66`:r.isNew?`1px solid ${C.gold}44`:"none",cursor:"pointer"}}
+                      onClick={()=>setLogDetalhe(logDetalhe===r.id?null:r.id)}>
+                      <td style={{padding:`${pd}px 8px`,textAlign:"center"}} onClick={e=>e.stopPropagation()}>
+                        {perms?.canSendSupport&&<input type="checkbox" checked={selIds.has(r.id)} onChange={()=>toggleSel(r.id)} style={{cursor:"pointer",accentColor:C.gold}}/>}
+                      </td>
+                      <td style={{padding:`${pd}px 14px`,fontWeight:600,color:C.text1,fontSize:11}}>
+                        {r.nuvem}
+                        {r.estorno&&<div style={{marginTop:2}}><EstornoBadge estorno={r.estorno}/></div>}
+                      </td>
+                      <td style={{padding:`${pd}px 14px`,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:C.text1}} title={r.destinatario}>{r.destinatario}</td>
+                      <td style={{padding:`${pd}px 14px`,color:C.text2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={r.transportadora}>{r.transportadora}</td>
+                      <td style={{padding:`${pd}px 10px`}}><StatusBadge val={r.status}/></td>
+                      <td style={{padding:`${pd}px 14px`,fontSize:11,color:C.text2,whiteSpace:"nowrap"}}>{r.prazo||"—"}</td>
+                      <td style={{padding:`${pd}px 10px`}}><SituacaoPrazoBadge prazo={r.prazo} status={r.status} entregueNoPrazo={r.entregueNoPrazo}/></td>
+                      <td style={{padding:`${pd}px 10px`}}><Chip val={r.urgencia} styles={urgStyles}/></td>
+                      <td style={{padding:`${pd}px 14px`}}><SemMovBadge ultimaMov={r.ultimaMov}/></td>
+                      <td style={{padding:`${pd}px 8px`}} onClick={e=>e.stopPropagation()}>
+                        {perms?.canSendSupport&&(
+                          <div style={{display:"flex",gap:4}}>
+                            <button onClick={()=>upd(r.id,{enviadoSuporte:true,atendimento:"Aberto",sentAt:new Date().toISOString()},{acao:"Enviado ao suporte"})} style={{flex:1,background:C.cream,border:`1px solid ${C.border}`,color:C.text2,borderRadius:6,padding:"4px 6px",fontSize:9,cursor:"pointer",fontWeight:500,whiteSpace:"nowrap"}}>Suporte →</button>
+                            {perms?.canOperate&&<button onClick={()=>handleArchiveFromLog(r.id)} style={{flex:1,background:C.greenSoft,border:`1px solid ${C.greenBorder}`,color:C.green,borderRadius:6,padding:"4px 6px",fontSize:9,cursor:"pointer",fontWeight:600,whiteSpace:"nowrap"}}>✓ Arq.</button>}
+                          </div>
+                        )}
+                      </td>
+                      <td style={{padding:`${pd}px 8px`,textAlign:"center"}} onClick={e=>e.stopPropagation()}>
+                        {perms?.canDelete&&<button onClick={()=>del(r.id)} style={{background:"transparent",border:"none",color:C.text4,cursor:"pointer",fontSize:14}}>×</button>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:12}}>
+              <div style={{fontSize:11,color:C.text4}}>{filteredLog.length===0?"Nenhum resultado":`Mostrando ${((safeP-1)*PAGE_SIZE)+1}–${Math.min(safeP*PAGE_SIZE,filteredLog.length)} de ${filteredLog.length} pedidos`}</div>
+              {totalPages>1&&<div style={{display:"flex",gap:4,alignItems:"center"}}>
+                <button onClick={()=>setLPage(n=>Math.max(1,n-1))} disabled={safeP===1} style={{...INP,padding:"5px 12px",cursor:safeP===1?"not-allowed":"pointer",opacity:safeP===1?0.4:1}}>‹</button>
+                <span style={{fontSize:11,color:C.text3,padding:"0 10px"}}>{safeP} / {totalPages}</span>
+                <button onClick={()=>setLPage(n=>Math.min(totalPages,n+1))} disabled={safeP===totalPages} style={{...INP,padding:"5px 12px",cursor:safeP===totalPages?"not-allowed":"pointer",opacity:safeP===totalPages?0.4:1}}>›</button>
+              </div>}
+            </div>
           </div>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:12}}>
-            <div style={{fontSize:11,color:C.text4}}>{filteredLog.length===0?"Nenhum resultado":`Mostrando ${((safeP-1)*PAGE_SIZE)+1}–${Math.min(safeP*PAGE_SIZE,filteredLog.length)} de ${filteredLog.length} pedidos`}</div>
-            {totalPages>1&&<div style={{display:"flex",gap:4,alignItems:"center"}}>
-              <button onClick={()=>setLPage(n=>Math.max(1,n-1))} disabled={safeP===1} style={{...INP,padding:"5px 12px",cursor:safeP===1?"not-allowed":"pointer",opacity:safeP===1?0.4:1}}>‹</button>
-              <span style={{fontSize:11,color:C.text3,padding:"0 10px"}}>{safeP} / {totalPages}</span>
-              <button onClick={()=>setLPage(n=>Math.min(totalPages,n+1))} disabled={safeP===totalPages} style={{...INP,padding:"5px 12px",cursor:safeP===totalPages?"not-allowed":"pointer",opacity:safeP===totalPages?0.4:1}}>›</button>
-            </div>}
-          </div>
+
+          {/* ── NOVO #2: Painel de detalhes da Logística ── */}
+          {logDetalheRow && (
+            <LogisticaDetalhePanel
+              r={logDetalheRow}
+              onClose={()=>setLogDetalhe(null)}
+              perms={perms}
+              upd={upd}
+              nomeAtendente={nomeAtendente}
+              addToast={addToast}
+            />
+          )}
         </div>
       )}
 
       {/* ── SUPORTE ── */}
       {tab==="suporte"&&(
         <div style={{display:"flex",minHeight:"calc(100vh - 110px)"}}>
-
-          {/* ── Fila lateral ── */}
           <div style={{width:detail?"360px":"100%",maxWidth:detail?"360px":"100%",borderRight:detail?`1px solid ${C.border}`:"none",display:"flex",flexDirection:"column",background:C.white,flexShrink:0}}>
             <div style={{padding:"16px 18px",borderBottom:`1px solid ${C.border}`,background:C.cream}}>
               <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:14}}>
@@ -1447,10 +1802,20 @@ export default function App() {
                   </div>
                 ))}
               </div>
-              <div style={{display:"flex",gap:6,marginBottom:selSupIds.size>0?10:0}}>
-                <input value={sSrch} onChange={e=>setSSrch(e.target.value)} placeholder="Buscar..." style={{...INP,flex:1,fontSize:11}}/>
+              {/* NOVO #1: Filtros de suporte com responsável */}
+              <div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap"}}>
+                <input value={sSrch} onChange={e=>setSSrch(e.target.value)} placeholder="Buscar..." style={{...INP,flex:1,minWidth:100,fontSize:11}}/>
                 <select value={sAtend} onChange={e=>setSAtend(e.target.value)} style={{...INP,fontSize:11}}>{["Todos","Aberto","Em andamento"].map(o=><option key={o}>{o}</option>)}</select>
-                <select value={sUrg}   onChange={e=>setSUrg(e.target.value)}   style={{...INP,fontSize:11}}>{["Todos","Alta","Média","Baixa"].map(o=><option key={o}>{o}</option>)}</select>
+              </div>
+              <div style={{display:"flex",gap:6,marginBottom:selSupIds.size>0?10:0}}>
+                <select value={sUrg} onChange={e=>setSUrg(e.target.value)} style={{...INP,fontSize:11,flex:1}}>{["Todos","Alta","Média","Baixa"].map(o=><option key={o}>{o}</option>)}</select>
+                {/* NOVO: filtro por responsável */}
+                <select value={sResp} onChange={e=>setSResp(e.target.value)} style={{...INP,fontSize:11,flex:1}}>
+                  {respOpts.length>1
+                    ? respOpts.map(o=><option key={o}>{o}</option>)
+                    : <option value="Todos">Responsável</option>
+                  }
+                </select>
               </div>
               {perms?.canOperate&&selSupIds.size>0&&(
                 <div style={{background:C.brand,borderRadius:8,padding:"9px 14px",display:"flex",alignItems:"center",gap:8}}>
@@ -1478,7 +1843,6 @@ export default function App() {
                           <span style={{fontWeight:600,fontSize:12,color:C.text1}}>{r.nuvem}</span>
                           <TimeOpenBadge sentAt={r.sentAt}/>
                         </div>
-                        {/* Badge de tipo de problema na fila */}
                         {tipo!=="OK"&&(
                           <div style={{background:cfg.bg,border:`1px solid ${cfg.bd}`,borderRadius:6,padding:"2px 8px",fontSize:9,color:cfg.color,marginBottom:4,display:"inline-flex",alignItems:"center",gap:3,fontWeight:700,letterSpacing:"0.04em"}}>
                             {cfg.icone} {cfg.label}
@@ -1489,6 +1853,7 @@ export default function App() {
                         <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:4}}><StatusBadge val={r.status}/><Chip val={r.urgencia} styles={urgStyles}/><Chip val={r.atendimento} styles={atendStyles}/></div>
                         {r.prazo&&<div style={{marginBottom:2}}><SlaCell prazo={r.prazo}/></div>}
                         {r.responsavel&&<div style={{fontSize:9,color:C.text4,marginTop:2,letterSpacing:"0.06em"}}>RESP: {r.responsavel}</div>}
+                        {r.estorno&&<div style={{marginTop:3}}><EstornoBadge estorno={r.estorno}/></div>}
                       </div>
                     </div>
                   )
@@ -1497,11 +1862,8 @@ export default function App() {
             </div>
           </div>
 
-          {/* ── Painel de detalhe (NOVO) ── */}
           {detail?(
             <div style={{flex:1,display:"flex",flexDirection:"column",overflowY:"auto",background:C.cream}}>
-
-              {/* BLOCO 1 — TOPO STICKY: título + HeaderProblema + AcoesRapidas */}
               <div style={{background:C.white,padding:"16px 22px 14px",borderBottom:`1px solid ${C.border}`,position:"sticky",top:0,zIndex:5,boxShadow:shadow.sm}}>
                 <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:10}}>
                   <div>
@@ -1511,108 +1873,66 @@ export default function App() {
                   </div>
                   <button onClick={()=>setSelSup(null)} style={{background:"transparent",border:`1px solid ${C.border}`,color:C.text4,cursor:"pointer",fontSize:16,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:8,flexShrink:0}}>×</button>
                 </div>
-
-                {/* HeaderProblema: classificação visual + métricas */}
-                <HeaderProblema
-                  r={detail}
-                  onNotificou={()=>upd(detail.id,{alertaStatus:null},{acao:"Alerta dispensado — cliente notificado",usuario:nomeAtendente})}
-                />
-
-                {/* AcoesRapidas: botões de ação com loading */}
+                <HeaderProblema r={detail} onNotificou={()=>upd(detail.id,{alertaStatus:null},{acao:"Alerta dispensado — cliente notificado",usuario:nomeAtendente})}/>
                 <AcoesRapidas
-                  r={detail}
-                  perms={perms}
-                  onNotificar={()=>{
-                    upd(detail.id,{atendimento:detail.atendimento==="Aberto"?"Em andamento":detail.atendimento},{acao:"Cliente notificado",usuario:nomeAtendente})
-                    setOpenTpl(true)
-                    addToast("📧 Template aberto para envio ao cliente")
-                  }}
-                  onAcionarTransp={()=>{
-                    upd(detail.id,{atendimento:detail.atendimento==="Aberto"?"Em andamento":detail.atendimento},{acao:`Transportadora acionada: ${detail.transportadora}`,usuario:nomeAtendente})
-                    addToast(`🚛 ${detail.transportadora} acionada`)
-                  }}
-                  onReenvio={()=>{
-                    upd(detail.id,{atendimento:detail.atendimento==="Aberto"?"Em andamento":detail.atendimento},{acao:"Reenvio solicitado ao cliente",usuario:nomeAtendente})
-                    addToast("📦 Reenvio registrado")
-                  }}
+                  r={detail} perms={perms}
+                  onNotificar={()=>{upd(detail.id,{atendimento:detail.atendimento==="Aberto"?"Em andamento":detail.atendimento},{acao:"Cliente notificado",usuario:nomeAtendente});setOpenTpl(true);addToast("📧 Template aberto para envio ao cliente")}}
+                  onAcionarTransp={()=>{upd(detail.id,{atendimento:detail.atendimento==="Aberto"?"Em andamento":detail.atendimento},{acao:`Transportadora acionada: ${detail.transportadora}`,usuario:nomeAtendente});addToast(`🚛 ${detail.transportadora} acionada`)}}
+                  onReenvio={()=>{upd(detail.id,{atendimento:detail.atendimento==="Aberto"?"Em andamento":detail.atendimento},{acao:"Reenvio solicitado ao cliente",usuario:nomeAtendente});addToast("📦 Reenvio registrado")}}
                   onResolver={()=>handleResolve(detail.id)}
                   onDevolver={()=>handleReturnLog(detail.id)}
                 />
               </div>
 
-              {/* BLOCO 2 + 3 — CONTEÚDO ROLÁVEL */}
               <div style={{padding:"18px 22px",flex:1}}>
-
-                {/* SugestaoSistema: sugestão automática */}
                 <SugestaoSistema r={detail}/>
 
-                {/* Grid 3 colunas: LOGÍSTICA | CLIENTE | PRAZO */}
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:14}}>
+                {/* Estorno no detalhe do suporte */}
+                {detail.estorno && (
+                  <div style={{background:C.purpleSoft,border:`1px solid ${C.purpleBorder}`,borderRadius:10,padding:"12px 16px",marginBottom:14,display:"flex",alignItems:"flex-start",gap:12}}>
+                    <span style={{fontSize:22}}>↩</span>
+                    <div>
+                      <div style={{fontSize:9,color:C.purple,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:4}}>Estorno identificado na planilha</div>
+                      <div style={{fontSize:12,color:C.text1,marginBottom:2}}>OP: {detail.estorno.op||"—"} · Valor: {detail.estorno.valor||"—"} · {detail.estorno.formaPag||"—"}</div>
+                      <div style={{fontSize:11,color:C.text3}}>Estornado por: {detail.estorno.estornadoPor||"—"} · Autorização: {detail.estorno.autorizacao||"—"}</div>
+                    </div>
+                  </div>
+                )}
 
-                  {/* LOGÍSTICA */}
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:14}}>
                   <div style={{background:C.white,borderRadius:12,border:`1px solid ${C.border}`,padding:"14px 16px",boxShadow:shadow.sm}}>
                     <div style={{fontSize:8,color:C.gold,textTransform:"uppercase",letterSpacing:"0.16em",fontWeight:700,marginBottom:10,paddingBottom:6,borderBottom:`1px solid ${C.border}`}}>Logística</div>
-                    {[
-                      ["Transportadora", detail.transportadora||"—"],
-                      ["Cód. Rastreio",  detail.rastreio?<span style={{fontFamily:"monospace",fontSize:10}}>{detail.rastreio}</span>:"—"],
-                      ["Status",         <StatusBadge val={detail.status}/>],
-                      ["Última atualiz.",<SemMovBadge ultimaMov={detail.ultimaMov}/>],
-                    ].map(([lbl,val])=>(
+                    {[["Transportadora",detail.transportadora||"—"],["Cód. Rastreio",detail.rastreio?<span style={{fontFamily:"monospace",fontSize:10}}>{detail.rastreio}</span>:"—"],["Status",<StatusBadge val={detail.status}/>],["Última atualiz.",<SemMovBadge ultimaMov={detail.ultimaMov}/>]].map(([lbl,val])=>(
                       <div key={lbl} style={{marginBottom:8}}>
                         <div style={{fontSize:8,color:C.text4,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:2}}>{lbl}</div>
                         <div style={{fontSize:11,color:C.text1}}>{val}</div>
                       </div>
                     ))}
                   </div>
-
-                  {/* CLIENTE */}
                   <div style={{background:C.white,borderRadius:12,border:`1px solid ${C.border}`,padding:"14px 16px",boxShadow:shadow.sm}}>
                     <div style={{fontSize:8,color:C.gold,textTransform:"uppercase",letterSpacing:"0.16em",fontWeight:700,marginBottom:10,paddingBottom:6,borderBottom:`1px solid ${C.border}`}}>Cliente</div>
-                    {[
-                      ["Nome",     detail.destinatario||"—"],
-                      ["Cidade/UF",[detail.cidade,detail.uf].filter(Boolean).join(" / ")||"—"],
-                      ["CEP",      detail.cep||"—"],
-                      ["Motivo",   detail.motivo||"—"],
-                    ].map(([lbl,val])=>(
+                    {[["Nome",detail.destinatario||"—"],["Cidade/UF",[detail.cidade,detail.uf].filter(Boolean).join(" / ")||"—"],["CEP",detail.cep||"—"],["Motivo",detail.motivo||"—"]].map(([lbl,val])=>(
                       <div key={lbl} style={{marginBottom:8}}>
                         <div style={{fontSize:8,color:C.text4,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:2}}>{lbl}</div>
                         <div style={{fontSize:11,color:C.text1}}>{val}</div>
                       </div>
                     ))}
                   </div>
-
-                  {/* PRAZO */}
                   <div style={{background:C.white,borderRadius:12,border:`1px solid ${C.border}`,padding:"14px 16px",boxShadow:shadow.sm}}>
                     <div style={{fontSize:8,color:C.gold,textTransform:"uppercase",letterSpacing:"0.16em",fontWeight:700,marginBottom:10,paddingBottom:6,borderBottom:`1px solid ${C.border}`}}>Prazo</div>
                     {(()=>{
-                      const dt2=parsePrazo(detail.prazo)
-                      const h2=new Date(); h2.setHours(0,0,0,0)
+                      const dt2=parsePrazo(detail.prazo); const h2=new Date(); h2.setHours(0,0,0,0)
                       const diasAtraso=dt2?Math.ceil((h2-dt2)/86400000):0
                       return <>
-                        <div style={{marginBottom:8}}>
-                          <div style={{fontSize:8,color:C.text4,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:2}}>Prazo logístico</div>
-                          <SlaCell prazo={detail.prazo}/>
-                        </div>
-                        <div style={{marginBottom:8}}>
-                          <div style={{fontSize:8,color:C.text4,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:2}}>Status prazo</div>
-                          <div style={{fontSize:11,color:C.text1}}>{detail.statusPrazoRaw||"—"}</div>
-                        </div>
-                        {diasAtraso>0&&(
-                          <div style={{marginBottom:8}}>
-                            <div style={{fontSize:8,color:C.text4,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:2}}>Dias de atraso</div>
-                            <span style={{background:C.redSoft,color:C.red,border:`1px solid ${C.redBorder}`,borderRadius:10,padding:"2px 8px",fontSize:11,fontWeight:700}}>{diasAtraso}d atrasado</span>
-                          </div>
-                        )}
-                        <div>
-                          <div style={{fontSize:8,color:C.text4,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:2}}>Data de envio</div>
-                          <div style={{fontSize:11,color:C.text2}}>{detail.dataCriacao||"—"}</div>
-                        </div>
+                        <div style={{marginBottom:8}}><div style={{fontSize:8,color:C.text4,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:2}}>Prazo logístico</div><SlaCell prazo={detail.prazo}/></div>
+                        <div style={{marginBottom:8}}><div style={{fontSize:8,color:C.text4,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:2}}>Status prazo</div><div style={{fontSize:11,color:C.text1}}>{detail.statusPrazoRaw||"—"}</div></div>
+                        {diasAtraso>0&&<div style={{marginBottom:8}}><div style={{fontSize:8,color:C.text4,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:2}}>Dias de atraso</div><span style={{background:C.redSoft,color:C.red,border:`1px solid ${C.redBorder}`,borderRadius:10,padding:"2px 8px",fontSize:11,fontWeight:700}}>{diasAtraso}d atrasado</span></div>}
+                        <div><div style={{fontSize:8,color:C.text4,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:2}}>Data de envio</div><div style={{fontSize:11,color:C.text2}}>{detail.dataCriacao||"—"}</div></div>
                       </>
                     })()}
                   </div>
                 </div>
 
-                {/* Operação: Responsável + Chamado + Obs */}
                 {perms?.canOperate&&(
                   <div style={{background:C.white,borderRadius:12,border:`1px solid ${C.border}`,padding:"14px 16px",marginBottom:14,boxShadow:shadow.sm}}>
                     <div style={{fontSize:8,color:C.gold,textTransform:"uppercase",letterSpacing:"0.16em",fontWeight:700,marginBottom:12,paddingBottom:6,borderBottom:`1px solid ${C.border}`}}>Operação</div>
@@ -1633,8 +1953,6 @@ export default function App() {
                 )}
 
                 <div style={{height:1,background:C.border,marginBottom:14}}/>
-
-                {/* Templates */}
                 <div style={{marginBottom:10,background:C.white,borderRadius:12,border:`1px solid ${C.border}`,overflow:"hidden",boxShadow:shadow.sm}}>
                   <button onClick={()=>setOpenTpl(v=>!v)} style={{width:"100%",padding:"13px 18px",background:openTpl?C.cream:"transparent",border:"none",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:11,fontWeight:500,color:C.text1,letterSpacing:"0.04em"}}>
                     <span>✉ Textos prontos para atendimento</span>
@@ -1654,8 +1972,6 @@ export default function App() {
                     </div>
                   </div>}
                 </div>
-
-                {/* Timeline de Histórico */}
                 <TimelineHistorico historico={detail.historico} isOpen={openHist} onToggle={()=>setOpenHist(v=>!v)}/>
               </div>
             </div>
@@ -1695,7 +2011,10 @@ export default function App() {
                         {pagedArch.length===0?<tr><td colSpan={10} style={{textAlign:"center",padding:32,color:C.text4}}>Nenhum resultado</td></tr>
                         :pagedArch.map((r,i)=>(
                           <tr key={r.id} style={{background:i%2===0?C.white:C.cream,borderBottom:`1px solid ${C.border}55`}}>
-                            <td style={{padding:`${pd}px 14px`,fontWeight:600,color:C.text3,fontSize:11}}>{r.nuvem}</td>
+                            <td style={{padding:`${pd}px 14px`,fontWeight:600,color:C.text3,fontSize:11}}>
+                              {r.nuvem}
+                              {r.estorno&&<div style={{marginTop:2}}><EstornoBadge estorno={r.estorno}/></div>}
+                            </td>
                             <td style={{padding:`${pd}px 14px`,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:C.text1}} title={r.destinatario}>{r.destinatario}</td>
                             <td style={{padding:`${pd}px 14px`,color:C.text2,overflow:"hidden",textOverflow:"ellipsis"}}>{r.transportadora}</td>
                             <td style={{padding:`${pd}px 14px`}}><StatusBadge val={r.status}/></td>
