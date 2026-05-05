@@ -106,41 +106,46 @@ const ALERTA_DIAS = 7
 // ─── Mapeamento de colunas expandido ─────────────────────────
 const HEADER_MAP = {
   nuvem:        ["identificador ecommerce","id ecommerce","no nuvem","nuvem","pedido"],
-  destinatario: ["destinatário nome","destinatario nome","nome destinatário","nome destinatario","nome do destinatário","nome do destinatario","destinatário","destinatario","nome do cliente","nome do pedido"],
+  destinatario: [
+    "destinatário nome","destinatario nome","nome destinatário","nome destinatario",
+    "nome do destinatário","nome do destinatario","nome do cliente","nome do comprador",
+    "nome comprador","comprador","destinatário","destinatario","nome do pedido","nome",
+  ],
   transportadora:["estratégia de frete","estrategia de frete","transportadora","frete"],
   rastreio:     ["rastreador last mile","código de rastreio","codigo de rastreio","rastreio","last mile"],
   status:       ["situação","situacao","situac","status"],
-  prazo:        ["prazo logístico","prazo logistico","prazo"],
+  prazo:        ["prazo logístico","prazo logistico","prazo logico","prazo entrega","prazo de entrega","prazo previsto","prazo"],
   nf:           ["nº nota fiscal","no nota fiscal","nota fiscal","no nf","nf"],
   ultimaMov:    ["última movimentação","ultima movimentacao","ultima movimentação","última movimentacao","ultima mov","última mov","movimentacao","movimentação","data última ocorrência","data ultima ocorrencia","data ultima ocorrência","data última ocorrencia","ultima ocorrencia","última ocorrência"],
-  // BUG FIX #8: novos campos adicionados ao HEADER_MAP
   cidade:       ["destinatário cidade","destinatario cidade","cidade destinatário","cidade destinatario","cidade"],
   uf:           ["destinatário uf","destinatario uf","uf destinatário","uf destinatario","uf","estado"],
   cep:          ["destinatário cep","destinatario cep","cep destinatário","cep destinatario","cep"],
-  statusPrazo:  ["status prazo","statusprazo","prazo status"],
+  statusPrazo:  ["status prazo","statusprazo","prazo status","situacao prazo","situação prazo"],
   dataCriacao:  ["data criação envio","data criacao envio","data de criacao","data criacao","data envio"],
 }
 const norm    = s => (s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim()
-// findIdx: tenta aliases multi-palavra primeiro (mais específicos), depois exato, depois contains.
-// Isso evita que "destinatario" case com "Destinatário CEP" antes de "Destinatário Nome".
 const findIdx = (hdrs, key) => {
   const aliases = HEADER_MAP[key] || []
   const nhdrs   = hdrs.map(norm)
-  const multi   = aliases.filter(v => norm(v).includes(" "))
-  const single  = aliases.filter(v => !norm(v).includes(" "))
-  // 1ª passagem: aliases multi-palavra (exact ou contains) — máxima especificidade
-  for (const v of multi) {
-    const nv = norm(v)
-    const i  = nhdrs.findIndex(h => h === nv || h.includes(nv))
-    if (i >= 0) return i
-  }
-  // 2ª passagem: aliases de palavra única — exact match
-  for (const v of single) {
+  // 1ª — exact match em qualquer alias
+  for (const v of aliases) {
     const i = nhdrs.findIndex(h => h === norm(v))
     if (i >= 0) return i
   }
-  // 3ª passagem: aliases de palavra única — contains (último recurso)
-  for (const v of single) {
+  // 2ª — alias multi-palavra: cabeçalho contém a frase completa
+  for (const v of aliases.filter(v => norm(v).includes(" "))) {
+    const nv = norm(v)
+    const i  = nhdrs.findIndex(h => h.includes(nv))
+    if (i >= 0) return i
+  }
+  // 3ª — alias simples: cabeçalho COMEÇA COM o alias (evita "status prazo" casar com "prazo")
+  for (const v of aliases.filter(v => !norm(v).includes(" "))) {
+    const nv = norm(v)
+    const i  = nhdrs.findIndex(h => h.startsWith(nv + " ") || h.startsWith(nv + "_") || h === nv)
+    if (i >= 0) return i
+  }
+  // 4ª — último recurso: contains simples
+  for (const v of aliases.filter(v => !norm(v).includes(" "))) {
     const nv = norm(v)
     const i  = nhdrs.findIndex(h => h.includes(nv))
     if (i >= 0) return i
@@ -1367,41 +1372,47 @@ export default function App() {
             </div>
           )}
           <div style={{overflowX:"auto",overflowY:"auto",maxHeight:"54vh",borderRadius:12,border:`1px solid ${C.border}`,boxShadow:shadow.sm}}>
-            <table style={{width:"100%",borderCollapse:"collapse",fontSize:compact?11:12,tableLayout:"fixed",minWidth:1280}}>
-              <colgroup><col style={{width:36}}/><col style={{width:88}}/><col style={{width:130}}/><col style={{width:110}}/><col style={{width:110}}/><col style={{width:96}}/><col style={{width:88}}/><col style={{width:120}}/><col style={{width:110}}/><col style={{width:68}}/><col style={{width:76}}/><col style={{width:110}}/><col style={{width:138}}/><col style={{width:36}}/></colgroup>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:compact?11:12,tableLayout:"fixed",minWidth:1100}}>
+              <colgroup>
+                <col style={{width:36}}/>
+                <col style={{width:92}}/>
+                <col style={{width:155}}/>
+                <col style={{width:130}}/>
+                <col style={{width:135}}/>
+                <col style={{width:92}}/>
+                <col style={{width:130}}/>
+                <col style={{width:80}}/>
+                <col style={{width:145}}/>
+                <col style={{width:118}}/>
+                <col style={{width:36}}/>
+              </colgroup>
               <thead>
                 <tr>
                   <th style={THF}>{perms?.canSendSupport&&<input type="checkbox" onChange={e=>e.target.checked?setSelIds(new Set(pagedLog.map(r=>r.id))):clearSel()} checked={selIds.size>0&&pagedLog.every(r=>selIds.has(r.id))} style={{cursor:"pointer",accentColor:C.gold}}/>}</th>
-                  {[["nuvem","No NUVEM"],["destinatario","Destinatário"],["transportadora","Transportadora"],["rastreio","Cód. Rastreio"],["status","Status"],["prazo","Prazo"],["prazoStatus","Situação Prazo"],["motivo","Motivo (auto)"],["urgencia","Urgência"],["acionar","Acionar?"]].map(([col,label])=>(
+                  {[["nuvem","No NUVEM"],["destinatario","Destinatário"],["transportadora","Transportadora"],["status","Status"],["prazo","Prazo Logístico"],["situacaoPrazo","Situação Prazo"],["urgencia","Urgência"],["ultimaMov","Últ. Movimentação"]].map(([col,label])=>(
                     <th key={col} onClick={()=>toggleSort(col)} style={TH}>{label}<SortIcon col={col} sortCol={sortCol} sortDir={sortDir}/></th>
                   ))}
-                  <th style={THF}>Ação</th><th style={THF}/>
+                  <th style={THF}>Ação</th>
+                  <th style={THF}/>
                 </tr>
               </thead>
               <tbody>
-                {pagedLog.length===0?<tr><td colSpan={13} style={{textAlign:"center",padding:36,color:C.text4}}>Nenhum pedido encontrado</td></tr>
+                {pagedLog.length===0?<tr><td colSpan={11} style={{textAlign:"center",padding:36,color:C.text4}}>Nenhum pedido encontrado</td></tr>
                 :pagedLog.map((r,i)=>(
                   <tr key={r.id} style={{background:r.isNew?`${C.gold}14`:i%2===0?C.white:C.cream,borderBottom:`1px solid ${C.border}66`,outline:r.isNew?`1px solid ${C.gold}44`:"none"}}>
                     <td style={{padding:`${pd}px 8px`,textAlign:"center"}}>{perms?.canSendSupport&&<input type="checkbox" checked={selIds.has(r.id)} onChange={()=>toggleSel(r.id)} style={{cursor:"pointer",accentColor:C.gold}}/>}</td>
                     <td style={{padding:`${pd}px 14px`,fontWeight:600,color:C.text1,fontSize:11}}>{r.nuvem}</td>
                     <td style={{padding:`${pd}px 14px`,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:C.text1}} title={r.destinatario}>{r.destinatario}</td>
-                    <td style={{padding:`${pd}px 14px`,color:C.text2,overflow:"hidden",textOverflow:"ellipsis"}}>{r.transportadora}</td>
-                    <td style={{padding:`${pd}px 14px`,color:C.text3,fontFamily:"monospace",fontSize:10,overflow:"hidden",textOverflow:"ellipsis"}}>{r.rastreio}</td>
-                    <td style={{padding:`${pd}px 14px`}}><StatusBadge val={r.status}/></td>
-                    <td style={{padding:`${pd}px 14px`,fontSize:11,color:C.text2}}>{r.prazo||"—"}</td>
+                    <td style={{padding:`${pd}px 14px`,color:C.text2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={r.transportadora}>{r.transportadora}</td>
+                    <td style={{padding:`${pd}px 10px`}}><StatusBadge val={r.status}/></td>
+                    <td style={{padding:`${pd}px 14px`,fontSize:11,color:C.text2,whiteSpace:"nowrap"}}>{r.prazo||"—"}</td>
                     <td style={{padding:`${pd}px 10px`}}><SituacaoPrazoBadge prazo={r.prazo} status={r.status} entregueNoPrazo={r.entregueNoPrazo}/></td>
-                    <td style={{padding:`${pd}px 14px`,color:C.text3,fontSize:10,overflow:"hidden",textOverflow:"ellipsis"}} title={r.motivo}>{r.motivo}</td>
-                    <td style={{padding:`${pd}px 14px`}}><Chip val={r.urgencia} styles={urgStyles}/></td>
-                    <td style={{padding:`${pd}px 14px`}}><Chip val={r.acionar} styles={acionStyles}/></td>
+                    <td style={{padding:`${pd}px 10px`}}><Chip val={r.urgencia} styles={urgStyles}/></td>
                     <td style={{padding:`${pd}px 14px`}}><SemMovBadge ultimaMov={r.ultimaMov}/></td>
                     <td style={{padding:`${pd}px 8px`}}>{perms?.canSendSupport&&(
                       <div style={{display:"flex",gap:4}}>
-                        <button onClick={()=>upd(r.id,{enviadoSuporte:true,atendimento:"Aberto",sentAt:new Date().toISOString()},{acao:"Enviado ao suporte"})} style={{flex:1,background:C.cream,border:`1px solid ${C.border}`,color:C.text2,borderRadius:6,padding:"4px 6px",fontSize:9,cursor:"pointer",fontWeight:500,transition:"all .15s",whiteSpace:"nowrap"}}>
-                          Suporte →
-                        </button>
-                        {perms?.canOperate&&<button onClick={()=>handleArchiveFromLog(r.id)} style={{flex:1,background:C.greenSoft,border:`1px solid ${C.greenBorder}`,color:C.green,borderRadius:6,padding:"4px 6px",fontSize:9,cursor:"pointer",fontWeight:600,whiteSpace:"nowrap"}}>
-                          ✓ Arq.
-                        </button>}
+                        <button onClick={()=>upd(r.id,{enviadoSuporte:true,atendimento:"Aberto",sentAt:new Date().toISOString()},{acao:"Enviado ao suporte"})} style={{flex:1,background:C.cream,border:`1px solid ${C.border}`,color:C.text2,borderRadius:6,padding:"4px 6px",fontSize:9,cursor:"pointer",fontWeight:500,whiteSpace:"nowrap"}}>Suporte →</button>
+                        {perms?.canOperate&&<button onClick={()=>handleArchiveFromLog(r.id)} style={{flex:1,background:C.greenSoft,border:`1px solid ${C.greenBorder}`,color:C.green,borderRadius:6,padding:"4px 6px",fontSize:9,cursor:"pointer",fontWeight:600,whiteSpace:"nowrap"}}>✓ Arq.</button>}
                       </div>
                     )}</td>
                     <td style={{padding:`${pd}px 8px`,textAlign:"center"}}>{perms?.canDelete&&<button onClick={()=>del(r.id)} style={{background:"transparent",border:"none",color:C.text4,cursor:"pointer",fontSize:14}}>×</button>}</td>
