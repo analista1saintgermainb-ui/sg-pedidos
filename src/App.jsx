@@ -945,7 +945,7 @@ export default function App() {
   const [toasts,setToasts]=useState([])
   const [lSrch,setLSrch]=useState(""); const [lSt,setLSt]=useState("Todos")
   const [lTr,setLTr]=useState("Todos"); const [lUrg,setLUrg]=useState("Todos")
-  const [lAc,setLAc]=useState("Todos"); const [qf,setQf]=useState("todos")
+  const [lAc,setLAc]=useState("Todos"); const [lSitPrazo,setLSitPrazo]=useState("Todos"); const [qf,setQf]=useState("todos")
   const [lPage,setLPage]=useState(1)
   const [selIds,setSelIds]=useState(new Set())
   const [sortCol,setSortCol]=useState(null); const [sortDir,setSortDir]=useState("asc")
