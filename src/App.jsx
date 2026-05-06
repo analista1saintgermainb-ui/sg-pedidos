@@ -457,7 +457,7 @@ function classificarProblema(r) {
 
   if (s.includes("devolv")||s.includes("recusa"))                        return "DEVOLUCAO"
   if (s.includes("extravia")||s.includes("perdid"))                      return "EXTRAVIO"
-  if (s.includes("falha")||(s.includes("tent")&&s.includes("entrega"))) return "ENDERECO"
+  if (s.includes("falha")||s.includes("problema")||(s.includes("tent")&&s.includes("entrega"))) return "ENDERECO"
   if (diasAtraso>0 && dias!==null && dias>4)                             return "POSSIVEL_EXTRAVIO"
   if (diasAtraso>0)                                                       return "ATRASO"
   return "OK"
@@ -506,7 +506,7 @@ const PROBLEMA_CONFIG = {
   ATRASO:            {label:"Atraso",           color:C.amber,bg:C.amberSoft, bd:C.amberBorder,icone:"⏰",sugestao:"Notificar cliente sobre o atraso na entrega"},
   POSSIVEL_EXTRAVIO: {label:"Possível Extravio", color:C.red,  bg:C.redSoft,  bd:C.redBorder,  icone:"🚨",sugestao:"Acionar transportadora imediatamente — possível extravio"},
   EXTRAVIO:          {label:"Objeto Extraviado", color:C.red,  bg:C.redSoft,  bd:C.redBorder,  icone:"🚨",sugestao:"Acionar transportadora imediatamente — confirmar localização do objeto"},
-  ENDERECO:          {label:"Falha de Entrega",  color:C.amber,bg:C.amberSoft, bd:C.amberBorder,icone:"📍",sugestao:"Confirmar dados de endereço com o cliente"},
+  ENDERECO:          {label:"Problema na entrega", color:C.amber,bg:C.amberSoft, bd:C.amberBorder,icone:"📍",sugestao:"Confirmar dados de endereço com o cliente"},
   DEVOLUCAO:         {label:"Devolução",         color:C.amber,bg:C.amberSoft, bd:C.amberBorder,icone:"↩", sugestao:"Tratar reenvio ou reembolso com o cliente"},
   OK:                {label:"Sem pendências",    color:C.green,bg:C.greenSoft, bd:C.greenBorder,icone:"✓", sugestao:"Pedido sem problemas críticos identificados"},
 }
