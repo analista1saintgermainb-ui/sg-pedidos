@@ -1027,6 +1027,8 @@ export default function App() {
   const [lSrch,setLSrch]=useState(""); const [lSt,setLSt]=useState("Todos")
   const [lTr,setLTr]=useState("Todos"); const [lUrg,setLUrg]=useState("Todos")
   const [lAc,setLAc]=useState("Todos"); const [lSitPrazo,setLSitPrazo]=useState("Todos"); const [qf,setQf]=useState("todos")
+  const [lShowFilters,setLShowFilters]=useState(false)
+  const [sResp,setSResp]=useState("Todos"); const [sShowFilters,setSShowFilters]=useState(false)
   const [lPage,setLPage]=useState(1)
   const [selIds,setSelIds]=useState(new Set())
   const [sortCol,setSortCol]=useState(null); const [sortDir,setSortDir]=useState("asc")
@@ -1130,6 +1132,7 @@ export default function App() {
   useEffect(()=>{if (!rows.some(r=>r.isNew))return;const t=setTimeout(()=>setRows(p=>p.map(r=>({...r,isNew:false}))),6000);return()=>clearTimeout(t)},[rows])
   useEffect(()=>setLPage(1),[lSrch,lSt,lTr,lUrg,lAc,lSitPrazo,qf,sortCol,sortDir])
   useEffect(()=>setAPage(1),[aSrch])
+  useEffect(()=>{setSResp("Todos")},[]) // reset on mount
   const detailPanelRef = useRef(null)
   const queueRef = useRef(null)
   useEffect(()=>{
@@ -1265,7 +1268,8 @@ export default function App() {
   const totalPages = Math.max(1,Math.ceil(filteredLog.length/PAGE_SIZE))
   const safeP      = Math.min(lPage,totalPages)
   const pagedLog   = filteredLog.slice((safeP-1)*PAGE_SIZE,safeP*PAGE_SIZE)
-  const supRows = baseSup.filter(r=>{const q=sSrch.toLowerCase();return(!q||[r.nuvem,r.destinatario,r.rastreio,r.status].some(v=>(v||"").toLowerCase().includes(q)))&&(sAtend==="Todos"||r.atendimento===sAtend)&&(sUrg==="Todos"||r.urgencia===sUrg)}).sort((a,b)=>{const uo={Alta:0,Média:1,Baixa:2,"—":3},ao={Aberto:0,"Em andamento":1};return(uo[a.urgencia]-uo[b.urgencia])||(ao[a.atendimento]-ao[b.atendimento])})
+  const respOpts = uniq(baseSup.map(r=>r.responsavel).filter(Boolean))
+  const supRows = baseSup.filter(r=>{const q=sSrch.toLowerCase();return(!q||[r.nuvem,r.destinatario,r.rastreio,r.status].some(v=>(v||"").toLowerCase().includes(q)))&&(sAtend==="Todos"||r.atendimento===sAtend)&&(sUrg==="Todos"||r.urgencia===sUrg)&&(sResp==="Todos"||r.responsavel===sResp)}).sort((a,b)=>{const uo={Alta:0,Média:1,Baixa:2,"—":3},ao={Aberto:0,"Em andamento":1};return(uo[a.urgencia]-uo[b.urgencia])||(ao[a.atendimento]-ao[b.atendimento])})
   const archRows = baseArch.filter(r=>{const q=aSrch.toLowerCase();return!q||[r.nuvem,r.destinatario,r.transportadora,r.status].some(v=>(v||"").toLowerCase().includes(q))}).sort((a,b)=>{const ta=(a.historico.find(h=>h.acao&&(h.acao.includes("Resolvido")||h.acao.includes("Arquivado")))||{}).ts||"";const tb=(b.historico.find(h=>h.acao&&(h.acao.includes("Resolvido")||h.acao.includes("Arquivado")))||{}).ts||"";return tb.localeCompare(ta)})
 
   const stOpts=uniq(baseLog.map(r=>r.status)), trOpts=uniq(baseLog.map(r=>r.transportadora))
@@ -1563,15 +1567,62 @@ export default function App() {
               </button>
             ))}
           </div>
-          <div style={{background:C.white,borderRadius:10,border:`1px solid ${C.border}`,padding:"12px 16px",marginBottom:14,display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",boxShadow:shadow.sm}}>
-            <input value={lSrch} onChange={e=>setLSrch(e.target.value)} placeholder="Buscar pedido, destinatário, rastreio..." style={{...getINP(),flex:1,minWidth:160}}/>
-            <select value={lSt}  onChange={e=>setLSt(e.target.value)}  style={getINP()}>{stOpts.map(o=><option key={o}>{o}</option>)}</select>
-            <select value={lTr}  onChange={e=>setLTr(e.target.value)}  style={getINP()}>{trOpts.map(o=><option key={o}>{o}</option>)}</select>
-            <select value={lUrg} onChange={e=>setLUrg(e.target.value)} style={getINP()}>{["Todos","Alta","Média","Baixa","—"].map(o=><option key={o}>{o}</option>)}</select>
-            <select value={lAc}  onChange={e=>setLAc(e.target.value)}  style={getINP()}>{["Todos","Sim","Avaliar","Não"].map(o=><option key={o}>{o}</option>)}</select>
-            <select value={lSitPrazo} onChange={e=>setLSitPrazo(e.target.value)} style={getINP()}>{["Todos","Antes do Prazo","No Prazo","Atraso"].map(o=><option key={o}>{o}</option>)}</select>
-            {(lSrch||lSt!=="Todos"||lTr!=="Todos"||lUrg!=="Todos"||lAc!=="Todos"||lSitPrazo!=="Todos")&&<button onClick={()=>{setLSrch("");setLSt("Todos");setLTr("Todos");setLUrg("Todos");setLAc("Todos");setLSitPrazo("Todos")}} style={{...getINP(),cursor:"pointer",color:C.red,borderColor:C.redBorder,background:C.redSoft}}>× Limpar</button>}
-          </div>
+          {/* ── Filtros Logística — chips ── */}
+          {(()=>{
+            const activeFilters = [
+              lSt!=="Todos"      && {key:"lSt",   label:`Status: ${lSt}`,          color:C.blue,   bg:C.blueSoft,   bd:C.blueBorder,  clear:()=>setLSt("Todos")},
+              lTr!=="Todos"      && {key:"lTr",   label:`Transp.: ${lTr}`,          color:C.text2,  bg:C.creamDark,  bd:C.border,      clear:()=>setLTr("Todos")},
+              lUrg!=="Todos"     && {key:"lUrg",  label:`Urgência: ${lUrg}`,        color:lUrg==="Alta"?C.red:lUrg==="Média"?C.amber:C.green, bg:lUrg==="Alta"?C.redSoft:lUrg==="Média"?C.amberSoft:C.greenSoft, bd:lUrg==="Alta"?C.redBorder:lUrg==="Média"?C.amberBorder:C.greenBorder, clear:()=>setLUrg("Todos")},
+              lSitPrazo!=="Todos"&& {key:"lSit",  label:`Prazo: ${lSitPrazo}`,      color:lSitPrazo==="Atraso"?C.red:C.green, bg:lSitPrazo==="Atraso"?C.redSoft:C.greenSoft, bd:lSitPrazo==="Atraso"?C.redBorder:C.greenBorder, clear:()=>setLSitPrazo("Todos")},
+              lAc!=="Todos"      && {key:"lAc",   label:`Acionar: ${lAc}`,          color:C.amber,  bg:C.amberSoft,  bd:C.amberBorder, clear:()=>setLAc("Todos")},
+            ].filter(Boolean)
+            const totalAtivos = activeFilters.length
+            return (
+              <div style={{marginBottom:14}}>
+                <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:activeFilters.length>0?8:0}}>
+                  <input value={lSrch} onChange={e=>setLSrch(e.target.value)} placeholder="Buscar pedido, destinatário, rastreio..." style={{...getINP(),flex:1,minWidth:160}}/>
+                  <div style={{position:"relative"}}>
+                    <button onClick={()=>setLShowFilters(v=>!v)}
+                      style={{background:lShowFilters?C.brand:C.white,border:`1px solid ${lShowFilters?C.brand:C.border}`,color:lShowFilters?C.white:C.text2,borderRadius:8,padding:"9px 16px",fontSize:11,cursor:"pointer",fontWeight:500,display:"flex",alignItems:"center",gap:8,whiteSpace:"nowrap"}}>
+                      ⚙ Filtros
+                      {totalAtivos>0&&<span style={{background:C.red,color:C.white,borderRadius:10,padding:"1px 7px",fontSize:10,fontWeight:700}}>{totalAtivos}</span>}
+                    </button>
+                    {lShowFilters&&(
+                      <div style={{position:"absolute",top:"calc(100% + 6px)",right:0,background:C.white,border:`1px solid ${C.border}`,borderRadius:12,boxShadow:shadow.lg,zIndex:100,minWidth:280,padding:16}}>
+                        <div style={{fontSize:9,color:C.text3,fontWeight:600,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:12}}>Filtrar por</div>
+                        {[
+                          ["Status",       lSt,       setLSt,       stOpts],
+                          ["Transportadora",lTr,      setLTr,       trOpts],
+                          ["Urgência",     lUrg,      setLUrg,      ["Todos","Alta","Média","Baixa"]],
+                          ["Situação prazo",lSitPrazo,setLSitPrazo,["Todos","Antes do Prazo","No Prazo","Atraso"]],
+                          ["Acionar?",     lAc,       setLAc,       ["Todos","Sim","Avaliar","Não"]],
+                        ].map(([lbl,val,setter,opts])=>(
+                          <div key={lbl} style={{marginBottom:12}}>
+                            <div style={{fontSize:10,color:C.text3,fontWeight:500,marginBottom:5}}>{lbl}</div>
+                            <select value={val} onChange={e=>setter(e.target.value)} style={{...getINP(),width:"100%",boxSizing:"border-box",fontSize:11}}>
+                              {opts.map(o=><option key={o}>{o}</option>)}
+                            </select>
+                          </div>
+                        ))}
+                        {totalAtivos>0&&<button onClick={()=>{setLSt("Todos");setLTr("Todos");setLUrg("Todos");setLSitPrazo("Todos");setLAc("Todos");setLShowFilters(false)}} style={{width:"100%",background:C.redSoft,border:`1px solid ${C.redBorder}`,color:C.red,borderRadius:7,padding:"7px 0",fontSize:11,cursor:"pointer",fontWeight:500,marginTop:4}}>× Limpar todos os filtros</button>}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                {activeFilters.length>0&&(
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+                    {activeFilters.map(f=>(
+                      <span key={f.key} style={{background:f.bg,color:f.color,border:`1px solid ${f.bd}`,borderRadius:20,padding:"3px 10px 3px 12px",fontSize:11,fontWeight:500,display:"flex",alignItems:"center",gap:6}}>
+                        {f.label}
+                        <span onClick={f.clear} style={{cursor:"pointer",opacity:0.7,fontSize:13,lineHeight:1}}>×</span>
+                      </span>
+                    ))}
+                    <span onClick={()=>{setLSt("Todos");setLTr("Todos");setLUrg("Todos");setLSitPrazo("Todos");setLAc("Todos");setLSrch("")}} style={{fontSize:11,color:C.text4,cursor:"pointer",textDecoration:"underline",marginLeft:2}}>Limpar tudo</span>
+                  </div>
+                )}
+              </div>
+            )
+          })()}
           {perms?.canSendSupport&&selIds.size>0&&(
             <div style={{background:C.brand,borderRadius:10,padding:"12px 20px",marginBottom:14,display:"flex",alignItems:"center",gap:10,boxShadow:shadow.md}}>
               <span style={{color:"#888",fontSize:12,flex:1}}>{selIds.size} pedido{selIds.size>1?"s":""} selecionado{selIds.size>1?"s":""}</span>
@@ -1660,9 +1711,58 @@ export default function App() {
               <button onClick={()=>setSupView(v=>v==="lista"?"kanban":"lista")} style={{background:supView==="kanban"?C.brand:C.white,border:`1px solid ${supView==="kanban"?C.brand:C.border}`,color:supView==="kanban"?C.white:C.text2,borderRadius:8,padding:"5px 12px",fontSize:10,cursor:"pointer",fontWeight:500,letterSpacing:"0.06em"}}>{supView==="kanban"?"☰ Lista":"⊞ Kanban"}</button>
             </div>
             <div style={{display:"flex",gap:6,marginBottom:selSupIds.size>0?10:0}}>
-                <input value={sSrch} onChange={e=>setSSrch(e.target.value)} placeholder="Buscar..." style={{...getINP(),flex:1,fontSize:11}}/>
-                <select value={sAtend} onChange={e=>setSAtend(e.target.value)} style={{...getINP(),fontSize:11}}>{["Todos","Aberto","Em andamento"].map(o=><option key={o}>{o}</option>)}</select>
-                <select value={sUrg}   onChange={e=>setSUrg(e.target.value)}   style={{...getINP(),fontSize:11}}>{["Todos","Alta","Média","Baixa"].map(o=><option key={o}>{o}</option>)}</select>
+                {/* ── Filtros Suporte — chips ── */}
+                {(()=>{
+                  const sActiveFilters = [
+                    sAtend!=="Todos" && {key:"at",   label:`Atendimento: ${sAtend}`, color:sAtend==="Aberto"?C.red:C.amber,   bg:sAtend==="Aberto"?C.redSoft:C.amberSoft,   bd:sAtend==="Aberto"?C.redBorder:C.amberBorder, clear:()=>setSAtend("Todos")},
+                    sUrg!=="Todos"   && {key:"urg",  label:`Urgência: ${sUrg}`,      color:sUrg==="Alta"?C.red:sUrg==="Média"?C.amber:C.green, bg:sUrg==="Alta"?C.redSoft:sUrg==="Média"?C.amberSoft:C.greenSoft, bd:sUrg==="Alta"?C.redBorder:sUrg==="Média"?C.amberBorder:C.greenBorder, clear:()=>setSUrg("Todos")},
+                    sResp!=="Todos"  && {key:"resp", label:`Resp.: ${sResp}`,         color:C.blue, bg:C.blueSoft, bd:C.blueBorder, clear:()=>setSResp("Todos")},
+                  ].filter(Boolean)
+                  const sTotalAtivos = sActiveFilters.length
+                  return (
+                    <div style={{width:"100%"}}>
+                      <div style={{display:"flex",gap:6,marginBottom:sActiveFilters.length>0?7:0}}>
+                        <input value={sSrch} onChange={e=>setSSrch(e.target.value)} placeholder="Buscar..." style={{...getINP(),flex:1,fontSize:11}}/>
+                        <div style={{position:"relative"}}>
+                          <button onClick={()=>setSShowFilters(v=>!v)}
+                            style={{background:sShowFilters?C.brand:C.white,border:`1px solid ${sShowFilters?C.brand:C.border}`,color:sShowFilters?C.white:C.text2,borderRadius:8,padding:"7px 12px",fontSize:11,cursor:"pointer",fontWeight:500,display:"flex",alignItems:"center",gap:6,whiteSpace:"nowrap"}}>
+                            ⚙ Filtros
+                            {sTotalAtivos>0&&<span style={{background:C.red,color:C.white,borderRadius:10,padding:"1px 6px",fontSize:10,fontWeight:700}}>{sTotalAtivos}</span>}
+                          </button>
+                          {sShowFilters&&(
+                            <div style={{position:"absolute",top:"calc(100% + 6px)",right:0,background:C.white,border:`1px solid ${C.border}`,borderRadius:12,boxShadow:shadow.lg,zIndex:100,minWidth:240,padding:14}}>
+                              <div style={{fontSize:9,color:C.text3,fontWeight:600,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:12}}>Filtrar por</div>
+                              {[
+                                ["Atendimento", sAtend, setSAtend, ["Todos","Aberto","Em andamento"]],
+                                ["Urgência",    sUrg,   setSUrg,   ["Todos","Alta","Média","Baixa"]],
+                                ["Responsável", sResp,  setSResp,  ["Todos",...respOpts]],
+                              ].map(([lbl,val,setter,opts])=>(
+                                <div key={lbl} style={{marginBottom:11}}>
+                                  <div style={{fontSize:10,color:C.text3,fontWeight:500,marginBottom:5}}>{lbl}</div>
+                                  <select value={val} onChange={e=>setter(e.target.value)} style={{...getINP(),width:"100%",boxSizing:"border-box",fontSize:11}}>
+                                    {opts.map(o=><option key={o}>{o}</option>)}
+                                  </select>
+                                </div>
+                              ))}
+                              {sTotalAtivos>0&&<button onClick={()=>{setSAtend("Todos");setSUrg("Todos");setSResp("Todos");setSShowFilters(false)}} style={{width:"100%",background:C.redSoft,border:`1px solid ${C.redBorder}`,color:C.red,borderRadius:7,padding:"6px 0",fontSize:11,cursor:"pointer",fontWeight:500,marginTop:4}}>× Limpar filtros</button>}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      {sActiveFilters.length>0&&(
+                        <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",marginBottom:7}}>
+                          {sActiveFilters.map(f=>(
+                            <span key={f.key} style={{background:f.bg,color:f.color,border:`1px solid ${f.bd}`,borderRadius:20,padding:"2px 9px 2px 11px",fontSize:10,fontWeight:500,display:"flex",alignItems:"center",gap:5}}>
+                              {f.label}
+                              <span onClick={f.clear} style={{cursor:"pointer",opacity:0.7,fontSize:12,lineHeight:1}}>×</span>
+                            </span>
+                          ))}
+                          <span onClick={()=>{setSAtend("Todos");setSUrg("Todos");setSResp("Todos");setSSrch("")}} style={{fontSize:10,color:C.text4,cursor:"pointer",textDecoration:"underline"}}>Limpar tudo</span>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
               </div>
               {perms?.canOperate&&selSupIds.size>0&&(
                 <div style={{background:C.brand,borderRadius:8,padding:"9px 14px",display:"flex",alignItems:"center",gap:8}}>
