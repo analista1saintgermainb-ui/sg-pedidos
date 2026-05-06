@@ -3,40 +3,41 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pi
 import * as XLSX from 'xlsx'
 
 // ─── Design System ────────────────────────────────────────────
-const C = {
-  brand:      "#0C0C0C",
-  brandSoft:  "#1A1A1A",
-  gold:       "#B8974A",
-  goldLight:  "#D4AF6A",
-  goldDim:    "#8C7038",
-  cream:      "#F8F5EF",
-  creamDark:  "#F0EDE5",
-  white:      "#FFFFFF",
-  border:     "#E8E3D8",
-  borderDark: "#D4CFC4",
-  text1:      "#1A1A1A",
-  text2:      "#5C5750",
-  text3:      "#9C9690",
-  text4:      "#C4C0B8",
-  red:        "#C0392B",
-  redSoft:    "#F9ECEB",
-  redBorder:  "#EBCBC8",
-  green:      "#2E7D50",
-  greenSoft:  "#EAF4EE",
-  greenBorder:"#C0DCCB",
-  amber:      "#8C6D1F",
-  amberSoft:  "#FDF6E3",
-  amberBorder:"#E8D5A3",
-  blue:       "#1A5276",
-  blueSoft:   "#EAF2FB",
-  blueBorder: "#AACDE6",
+// ─── Temas claro e escuro ─────────────────────────────────────
+const CL = {
+  brand:      "#0C0C0C", brandSoft:  "#1A1A1A",
+  gold:       "#B8974A", goldLight:  "#D4AF6A", goldDim: "#8C7038",
+  cream:      "#F8F5EF", creamDark:  "#F0EDE5",
+  white:      "#FFFFFF", border:     "#E8E3D8", borderDark: "#D4CFC4",
+  text1:      "#1A1A1A", text2:      "#5C5750", text3: "#9C9690", text4: "#C4C0B8",
+  red:        "#C0392B", redSoft:    "#F9ECEB", redBorder:  "#EBCBC8",
+  green:      "#2E7D50", greenSoft:  "#EAF4EE", greenBorder:"#C0DCCB",
+  amber:      "#8C6D1F", amberSoft:  "#FDF6E3", amberBorder:"#E8D5A3",
+  blue:       "#1A5276", blueSoft:   "#EAF2FB", blueBorder: "#AACDE6",
+}
+const CD = {
+  brand:      "#F0EDE5", brandSoft:  "#D4CFC4",
+  gold:       "#D4AF6A", goldLight:  "#E8C97A", goldDim: "#B8974A",
+  cream:      "#0F0F0F", creamDark:  "#1A1A1A",
+  white:      "#1E1E1E", border:     "#2E2E2E", borderDark: "#3A3A3A",
+  text1:      "#F0EDE5", text2:      "#C4C0B8", text3: "#7A7670", text4: "#4A4640",
+  red:        "#E05555", redSoft:    "#2A1212", redBorder:  "#4A2020",
+  green:      "#4AB870", greenSoft:  "#0A2015", greenBorder:"#1A4030",
+  amber:      "#C89830", amberSoft:  "#281E00", amberBorder:"#4A3800",
+  blue:       "#5A9AD4", blueSoft:   "#0A1825", blueBorder: "#1A3A55",
+}
+// C é mutável — applyTheme() troca os valores em re-render
+const C = {...CL}
+function applyTheme(dark) {
+  const src = dark ? CD : CL
+  Object.keys(src).forEach(k => { C[k] = src[k] })
 }
 const shadow = {
   sm: "0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)",
   md: "0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04)",
   lg: "0 8px 24px rgba(0,0,0,0.10), 0 4px 8px rgba(0,0,0,0.06)",
 }
-const globalStyle = `
+const getGlobalStyle = () => `
   @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600&family=Inter:wght@300;400;500;600&display=swap');
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: ${C.cream}; color: ${C.text1}; }
@@ -629,7 +630,7 @@ function Toast({toasts}) {
   </div>
 }
 
-const INP = {borderRadius:8,border:`1px solid ${C.border}`,padding:"9px 12px",fontSize:12,background:C.white,color:C.text1,outline:"none",transition:"border-color .2s"}
+const getINP = () => ({borderRadius:8,border:`1px solid ${C.border}`,padding:"9px 12px",fontSize:12,background:C.white,color:C.text1,outline:"none",transition:"border-color .2s"})
 
 // ─── Componentes de Suporte (NOVOS) ──────────────────────────
 
@@ -846,11 +847,11 @@ function LoginScreen({onLogin}) {
         <form onSubmit={handle}>
           <div style={{marginBottom:20}}>
             <label style={{fontSize:9,letterSpacing:"0.14em",textTransform:"uppercase",color:C.text3,fontWeight:500,display:"block",marginBottom:7}}>E-mail</label>
-            <input value={email} onChange={e=>setEmail(e.target.value)} type="email" placeholder="seu@email.com" required style={{...INP,width:"100%",boxSizing:"border-box",fontSize:13}}/>
+            <input value={email} onChange={e=>setEmail(e.target.value)} type="email" placeholder="seu@email.com" required style={{...getINP(),width:"100%",boxSizing:"border-box",fontSize:13}}/>
           </div>
           <div style={{marginBottom:28}}>
             <label style={{fontSize:9,letterSpacing:"0.14em",textTransform:"uppercase",color:C.text3,fontWeight:500,display:"block",marginBottom:7}}>Senha</label>
-            <input value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder="••••••••" required style={{...INP,width:"100%",boxSizing:"border-box",fontSize:13}}/>
+            <input value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder="••••••••" required style={{...getINP(),width:"100%",boxSizing:"border-box",fontSize:13}}/>
           </div>
           {error&&<div style={{background:C.redSoft,color:C.red,border:`1px solid ${C.redBorder}`,borderRadius:8,padding:"10px 14px",fontSize:12,marginBottom:20,lineHeight:1.5}}>{error}</div>}
           <button type="submit" disabled={loading} style={{width:"100%",background:loading?C.text4:C.brand,border:"none",color:C.white,borderRadius:8,padding:"13px 0",fontSize:11,fontWeight:500,cursor:loading?"not-allowed":"pointer",letterSpacing:"0.18em",textTransform:"uppercase",transition:"background .2s"}}>
@@ -904,12 +905,12 @@ function UsuariosPanel({token,addToast}) {
             {[["Nome","nome","text","Nome completo"],["E-mail","email","email","email@exemplo.com"],["Senha inicial","senha","password","Mínimo 6 caracteres"]].map(([lbl,key,type,ph])=>(
               <div key={key}>
                 <label style={{fontSize:9,letterSpacing:"0.12em",textTransform:"uppercase",color:C.text3,fontWeight:500,display:"block",marginBottom:6}}>{lbl}</label>
-                <input value={form[key]} onChange={e=>setForm(f=>({...f,[key]:e.target.value}))} type={type} placeholder={ph} required={key!=="nome"} minLength={key==="senha"?6:undefined} style={{...INP,width:"100%",boxSizing:"border-box"}}/>
+                <input value={form[key]} onChange={e=>setForm(f=>({...f,[key]:e.target.value}))} type={type} placeholder={ph} required={key!=="nome"} minLength={key==="senha"?6:undefined} style={{...getINP(),width:"100%",boxSizing:"border-box"}}/>
               </div>
             ))}
             <div>
               <label style={{fontSize:9,letterSpacing:"0.12em",textTransform:"uppercase",color:C.text3,fontWeight:500,display:"block",marginBottom:6}}>Perfil de acesso</label>
-              <select value={form.perfil} onChange={e=>setForm(f=>({...f,perfil:e.target.value}))} style={{...INP,width:"100%",boxSizing:"border-box"}}>
+              <select value={form.perfil} onChange={e=>setForm(f=>({...f,perfil:e.target.value}))} style={{...getINP(),width:"100%",boxSizing:"border-box"}}>
                 {Object.entries(LABEL).map(([k,v])=><option key={k} value={k}>{v}</option>)}
               </select>
             </div>
@@ -934,7 +935,7 @@ function UsuariosPanel({token,addToast}) {
                   <td style={{padding:"12px 18px",color:C.text1,fontWeight:500}}>{u.nome||"—"}</td>
                   <td style={{padding:"12px 18px",color:C.text2}}>{u.email}</td>
                   <td style={{padding:"12px 18px"}}>
-                    <select value={u.perfil} onChange={e=>handlePerfil(u.id,e.target.value)} style={{...INP,padding:"5px 10px",fontSize:11}}>
+                    <select value={u.perfil} onChange={e=>handlePerfil(u.id,e.target.value)} style={{...getINP(),padding:"5px 10px",fontSize:11}}>
                       {Object.entries(LABEL).map(([k,v])=><option key={k} value={k}>{v}</option>)}
                     </select>
                   </td>
@@ -1336,8 +1337,8 @@ export default function App() {
   const THF = {...TH,cursor:"default"}
 
   return (
-    <div style={{fontFamily:"'Inter',sans-serif",minHeight:"100vh",background:dark?"#111":C.cream,color:dark?C.cream:C.text1,transition:"background .3s"}}>
-      <style>{globalStyle}</style>
+    <div style={{fontFamily:"'Inter',sans-serif",minHeight:"100vh",background:C.cream,color:C.text1,transition:"background .3s"}}>
+      <style>{getGlobalStyle()}</style>
       <Toast toasts={toasts}/>
 
       {/* ── HEADER ── */}
@@ -1361,7 +1362,7 @@ export default function App() {
               <button onClick={()=>setImporting(true)} style={{background:"transparent",border:`1px solid ${C.gold}`,color:C.gold,borderRadius:6,padding:"6px 14px",fontSize:10,cursor:"pointer",letterSpacing:"0.06em"}}>+ Importar</button>
             </>
           )}
-          <button onClick={()=>setDark(d=>!d)} title="Alternar modo escuro" style={{background:"transparent",border:`1px solid #333`,color:dark?C.gold:"#666",borderRadius:6,padding:"6px 10px",fontSize:12,cursor:"pointer"}}>{dark?"☀":"🌙"}</button>
+          <button onClick={()=>{const nd=!dark;applyTheme(nd);setDark(nd)}} title="Alternar modo escuro" style={{background:"transparent",border:`1px solid #333`,color:dark?C.gold:C.text3,borderRadius:6,padding:"6px 10px",fontSize:12,cursor:"pointer"}}>{dark?"☀":"🌙"}</button>
         {perms?.canClear&&rows.length>0&&(
             <button onClick={handleClearAll} style={{background:"transparent",border:`1px solid #333`,color:"#555",borderRadius:6,padding:"6px 14px",fontSize:10,cursor:"pointer",letterSpacing:"0.06em"}}>
               Limpar tudo
@@ -1561,13 +1562,13 @@ export default function App() {
             ))}
           </div>
           <div style={{background:C.white,borderRadius:10,border:`1px solid ${C.border}`,padding:"12px 16px",marginBottom:14,display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",boxShadow:shadow.sm}}>
-            <input value={lSrch} onChange={e=>setLSrch(e.target.value)} placeholder="Buscar pedido, destinatário, rastreio..." style={{...INP,flex:1,minWidth:160}}/>
-            <select value={lSt}  onChange={e=>setLSt(e.target.value)}  style={INP}>{stOpts.map(o=><option key={o}>{o}</option>)}</select>
-            <select value={lTr}  onChange={e=>setLTr(e.target.value)}  style={INP}>{trOpts.map(o=><option key={o}>{o}</option>)}</select>
-            <select value={lUrg} onChange={e=>setLUrg(e.target.value)} style={INP}>{["Todos","Alta","Média","Baixa","—"].map(o=><option key={o}>{o}</option>)}</select>
-            <select value={lAc}  onChange={e=>setLAc(e.target.value)}  style={INP}>{["Todos","Sim","Avaliar","Não"].map(o=><option key={o}>{o}</option>)}</select>
-            <select value={lSitPrazo} onChange={e=>setLSitPrazo(e.target.value)} style={INP}>{["Todos","Antes do Prazo","No Prazo","Atraso"].map(o=><option key={o}>{o}</option>)}</select>
-            {(lSrch||lSt!=="Todos"||lTr!=="Todos"||lUrg!=="Todos"||lAc!=="Todos"||lSitPrazo!=="Todos")&&<button onClick={()=>{setLSrch("");setLSt("Todos");setLTr("Todos");setLUrg("Todos");setLAc("Todos");setLSitPrazo("Todos")}} style={{...INP,cursor:"pointer",color:C.red,borderColor:C.redBorder,background:C.redSoft}}>× Limpar</button>}
+            <input value={lSrch} onChange={e=>setLSrch(e.target.value)} placeholder="Buscar pedido, destinatário, rastreio..." style={{...getINP(),flex:1,minWidth:160}}/>
+            <select value={lSt}  onChange={e=>setLSt(e.target.value)}  style={getINP()}>{stOpts.map(o=><option key={o}>{o}</option>)}</select>
+            <select value={lTr}  onChange={e=>setLTr(e.target.value)}  style={getINP()}>{trOpts.map(o=><option key={o}>{o}</option>)}</select>
+            <select value={lUrg} onChange={e=>setLUrg(e.target.value)} style={getINP()}>{["Todos","Alta","Média","Baixa","—"].map(o=><option key={o}>{o}</option>)}</select>
+            <select value={lAc}  onChange={e=>setLAc(e.target.value)}  style={getINP()}>{["Todos","Sim","Avaliar","Não"].map(o=><option key={o}>{o}</option>)}</select>
+            <select value={lSitPrazo} onChange={e=>setLSitPrazo(e.target.value)} style={getINP()}>{["Todos","Antes do Prazo","No Prazo","Atraso"].map(o=><option key={o}>{o}</option>)}</select>
+            {(lSrch||lSt!=="Todos"||lTr!=="Todos"||lUrg!=="Todos"||lAc!=="Todos"||lSitPrazo!=="Todos")&&<button onClick={()=>{setLSrch("");setLSt("Todos");setLTr("Todos");setLUrg("Todos");setLAc("Todos");setLSitPrazo("Todos")}} style={{...getINP(),cursor:"pointer",color:C.red,borderColor:C.redBorder,background:C.redSoft}}>× Limpar</button>}
           </div>
           {perms?.canSendSupport&&selIds.size>0&&(
             <div style={{background:C.brand,borderRadius:10,padding:"12px 20px",marginBottom:14,display:"flex",alignItems:"center",gap:10,boxShadow:shadow.md}}>
@@ -1630,9 +1631,9 @@ export default function App() {
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:12}}>
             <div style={{fontSize:11,color:C.text4}}>{filteredLog.length===0?"Nenhum resultado":`Mostrando ${((safeP-1)*PAGE_SIZE)+1}–${Math.min(safeP*PAGE_SIZE,filteredLog.length)} de ${filteredLog.length} pedidos`}</div>
             {totalPages>1&&<div style={{display:"flex",gap:4,alignItems:"center"}}>
-              <button onClick={()=>setLPage(n=>Math.max(1,n-1))} disabled={safeP===1} style={{...INP,padding:"5px 12px",cursor:safeP===1?"not-allowed":"pointer",opacity:safeP===1?0.4:1}}>‹</button>
+              <button onClick={()=>setLPage(n=>Math.max(1,n-1))} disabled={safeP===1} style={{...getINP(),padding:"5px 12px",cursor:safeP===1?"not-allowed":"pointer",opacity:safeP===1?0.4:1}}>‹</button>
               <span style={{fontSize:11,color:C.text3,padding:"0 10px"}}>{safeP} / {totalPages}</span>
-              <button onClick={()=>setLPage(n=>Math.min(totalPages,n+1))} disabled={safeP===totalPages} style={{...INP,padding:"5px 12px",cursor:safeP===totalPages?"not-allowed":"pointer",opacity:safeP===totalPages?0.4:1}}>›</button>
+              <button onClick={()=>setLPage(n=>Math.min(totalPages,n+1))} disabled={safeP===totalPages} style={{...getINP(),padding:"5px 12px",cursor:safeP===totalPages?"not-allowed":"pointer",opacity:safeP===totalPages?0.4:1}}>›</button>
             </div>}
           </div>
         </div>
@@ -1657,9 +1658,9 @@ export default function App() {
               <button onClick={()=>setSupView(v=>v==="lista"?"kanban":"lista")} style={{background:supView==="kanban"?C.brand:C.white,border:`1px solid ${supView==="kanban"?C.brand:C.border}`,color:supView==="kanban"?C.white:C.text2,borderRadius:8,padding:"5px 12px",fontSize:10,cursor:"pointer",fontWeight:500,letterSpacing:"0.06em"}}>{supView==="kanban"?"☰ Lista":"⊞ Kanban"}</button>
             </div>
             <div style={{display:"flex",gap:6,marginBottom:selSupIds.size>0?10:0}}>
-                <input value={sSrch} onChange={e=>setSSrch(e.target.value)} placeholder="Buscar..." style={{...INP,flex:1,fontSize:11}}/>
-                <select value={sAtend} onChange={e=>setSAtend(e.target.value)} style={{...INP,fontSize:11}}>{["Todos","Aberto","Em andamento"].map(o=><option key={o}>{o}</option>)}</select>
-                <select value={sUrg}   onChange={e=>setSUrg(e.target.value)}   style={{...INP,fontSize:11}}>{["Todos","Alta","Média","Baixa"].map(o=><option key={o}>{o}</option>)}</select>
+                <input value={sSrch} onChange={e=>setSSrch(e.target.value)} placeholder="Buscar..." style={{...getINP(),flex:1,fontSize:11}}/>
+                <select value={sAtend} onChange={e=>setSAtend(e.target.value)} style={{...getINP(),fontSize:11}}>{["Todos","Aberto","Em andamento"].map(o=><option key={o}>{o}</option>)}</select>
+                <select value={sUrg}   onChange={e=>setSUrg(e.target.value)}   style={{...getINP(),fontSize:11}}>{["Todos","Alta","Média","Baixa"].map(o=><option key={o}>{o}</option>)}</select>
               </div>
               {perms?.canOperate&&selSupIds.size>0&&(
                 <div style={{background:C.brand,borderRadius:8,padding:"9px 14px",display:"flex",alignItems:"center",gap:8}}>
@@ -1708,7 +1709,7 @@ export default function App() {
             </div>
           </div>
           {detail?(
-            <div ref={detailPanelRef} style={{flex:1,display:"flex",flexDirection:"column",overflowY:"auto",background:dark?"#1A1A1A":C.cream,height:"100%"}}>
+            <div ref={detailPanelRef} style={{flex:1,display:"flex",flexDirection:"column",overflowY:"auto",background:C.cream,height:"100%"}}>
 
               {/* BLOCO 1 — TOPO STICKY: título + HeaderProblema + AcoesRapidas */}
               <div style={{background:C.white,padding:"16px 22px 14px",borderBottom:`1px solid ${C.border}`,position:"sticky",top:0,zIndex:5,boxShadow:shadow.sm}}>
@@ -1830,7 +1831,7 @@ export default function App() {
                       {[["Responsável","responsavel","Nome do responsável..."],["Nº Chamado Zendesk","chamado","Ex: #45821"]].map(([lbl,key,ph])=>(
                         <div key={key}>
                           <div style={{fontSize:8,color:C.text4,textTransform:"uppercase",letterSpacing:"0.12em",marginBottom:5,fontWeight:500}}>{lbl}</div>
-                          <input value={detail[key]||""} onChange={e=>upd(detail.id,{[key]:e.target.value})} placeholder={ph} style={{...INP,width:"100%",boxSizing:"border-box"}}/>
+                          <input value={detail[key]||""} onChange={e=>upd(detail.id,{[key]:e.target.value})} placeholder={ph} style={{...getINP(),width:"100%",boxSizing:"border-box"}}/>
                         </div>
                       ))}
                     </div>
@@ -1891,7 +1892,7 @@ export default function App() {
           </div>
           {arch===0?<div style={{textAlign:"center",padding:"56px 0",color:C.text4}}><div style={{fontSize:32,marginBottom:12,opacity:0.2}}>◎</div><div style={{fontSize:14}}>Nenhum atendimento arquivado</div></div>:(
             <div>
-              <div style={{marginBottom:14}}><input value={aSrch} onChange={e=>setASrch(e.target.value)} placeholder="Buscar nos arquivados..." style={{...INP,width:"100%",padding:"10px 14px",boxSizing:"border-box",boxShadow:shadow.sm}}/></div>
+              <div style={{marginBottom:14}}><input value={aSrch} onChange={e=>setASrch(e.target.value)} placeholder="Buscar nos arquivados..." style={{...getINP(),width:"100%",padding:"10px 14px",boxSizing:"border-box",boxShadow:shadow.sm}}/></div>
               {(()=>{
                 const aTotalPages = Math.max(1,Math.ceil(archRows.length/PAGE_SIZE))
                 const aSafeP = Math.min(aPage,aTotalPages)
@@ -1923,9 +1924,9 @@ export default function App() {
                   <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:10}}>
                     <div style={{fontSize:11,color:C.text4}}>{archRows.length===0?"Nenhum resultado":`Mostrando ${((aSafeP-1)*PAGE_SIZE)+1}–${Math.min(aSafeP*PAGE_SIZE,archRows.length)} de ${archRows.length} arquivados`}</div>
                     {aTotalPages>1&&<div style={{display:"flex",gap:4,alignItems:"center"}}>
-                      <button onClick={()=>setAPage(n=>Math.max(1,n-1))} disabled={aSafeP===1} style={{...INP,padding:"5px 12px",cursor:aSafeP===1?"not-allowed":"pointer",opacity:aSafeP===1?0.4:1}}>‹</button>
+                      <button onClick={()=>setAPage(n=>Math.max(1,n-1))} disabled={aSafeP===1} style={{...getINP(),padding:"5px 12px",cursor:aSafeP===1?"not-allowed":"pointer",opacity:aSafeP===1?0.4:1}}>‹</button>
                       <span style={{fontSize:11,color:C.text3,padding:"0 10px"}}>{aSafeP} / {aTotalPages}</span>
-                      <button onClick={()=>setAPage(n=>Math.min(aTotalPages,n+1))} disabled={aSafeP===aTotalPages} style={{...INP,padding:"5px 12px",cursor:aSafeP===aTotalPages?"not-allowed":"pointer",opacity:aSafeP===aTotalPages?0.4:1}}>›</button>
+                      <button onClick={()=>setAPage(n=>Math.min(aTotalPages,n+1))} disabled={aSafeP===aTotalPages} style={{...getINP(),padding:"5px 12px",cursor:aSafeP===aTotalPages?"not-allowed":"pointer",opacity:aSafeP===aTotalPages?0.4:1}}>›</button>
                     </div>}
                   </div>
                 </>
