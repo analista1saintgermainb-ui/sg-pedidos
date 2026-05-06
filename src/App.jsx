@@ -1029,51 +1029,54 @@ function FilterBar({search, onSearch, showFilters, onToggleFilters, filters, onC
 
   return (
     <div style={{marginBottom:compact?8:14}}>
-      <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:activeFilters.length>0?8:0}}>
+      {/* Linha 1: busca + botão */}
+      <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:8}}>
         <input value={search} onChange={e=>onSearch(e.target.value)}
           placeholder={compact?"Buscar...":"Buscar pedido, destinatário, rastreio..."}
-          style={{...getINP(),flex:1,minWidth:compact?80:160,fontSize:compact?11:12}}/>
-        <div style={{position:"relative"}}>
-          <button onClick={onToggleFilters}
-            style={{background:showFilters?C.brand:C.white,border:`1px solid ${showFilters?C.brand:C.border}`,color:showFilters?C.white:C.text2,borderRadius:8,padding:compact?"7px 12px":"9px 16px",fontSize:11,cursor:"pointer",fontWeight:500,display:"flex",alignItems:"center",gap:8,whiteSpace:"nowrap",transition:"all .15s"}}>
-            ⚙ Filtros
-            {totalAtivos>0&&<span style={{background:C.red,color:C.white,borderRadius:10,padding:"1px 7px",fontSize:10,fontWeight:700,lineHeight:1.4}}>{totalAtivos}</span>}
-          </button>
-          {showFilters&&(
-            <div style={{position:"fixed",zIndex:999,background:C.white,border:`1px solid ${C.border}`,borderRadius:12,boxShadow:shadow.lg,minWidth:260,padding:16,marginTop:6}}
-              onClick={e=>e.stopPropagation()}>
-              <div style={{fontSize:9,color:C.text3,fontWeight:600,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:12}}>Filtrar por</div>
-              {filters.map(f=>(
-                <div key={f.key} style={{marginBottom:11}}>
-                  <div style={{fontSize:10,color:C.text3,fontWeight:500,marginBottom:5}}>{f.label}</div>
-                  <select value={f.value} onChange={e=>f.setValue(e.target.value)}
-                    style={{...getINP(),width:"100%",boxSizing:"border-box",fontSize:11}}>
-                    {f.opts.map(o=><option key={o}>{o}</option>)}
-                  </select>
-                </div>
-              ))}
-              {totalAtivos>0&&(
-                <button onClick={onClearAll}
-                  style={{width:"100%",background:C.redSoft,border:`1px solid ${C.redBorder}`,color:C.red,borderRadius:7,padding:"7px 0",fontSize:11,cursor:"pointer",fontWeight:500,marginTop:4}}>
-                  × Limpar todos os filtros
-                </button>
-              )}
-            </div>
-          )}
-        </div>
+          style={{...getINP(),flex:1,fontSize:compact?11:12}}/>
+        <button onClick={onToggleFilters}
+          style={{background:showFilters||totalAtivos>0?C.brand:C.white,border:`1px solid ${showFilters||totalAtivos>0?C.brand:C.border}`,color:showFilters||totalAtivos>0?C.white:C.text2,borderRadius:8,padding:compact?"7px 14px":"9px 16px",fontSize:11,cursor:"pointer",fontWeight:500,display:"flex",alignItems:"center",gap:8,whiteSpace:"nowrap",transition:"all .15s"}}>
+          <span>⚙</span>
+          <span>Filtros</span>
+          {totalAtivos>0&&<span style={{background:C.white,color:C.red,borderRadius:10,padding:"0px 7px",fontSize:10,fontWeight:700,lineHeight:1.6}}>{totalAtivos}</span>}
+        </button>
       </div>
+
+      {/* Chips de filtros ativos */}
       {activeFilters.length>0&&(
-        <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",marginBottom:8}}>
           {activeFilters.map(f=>{
             const s = chipColors[f.value]||{color:C.blue,bg:C.blueSoft,bd:C.blueBorder}
             return (
               <span key={f.key} style={{background:s.bg,color:s.color,border:`1px solid ${s.bd}`,borderRadius:20,padding:"3px 8px 3px 12px",fontSize:11,fontWeight:500,display:"flex",alignItems:"center",gap:5,whiteSpace:"nowrap"}}>
-                {f.label}: {f.value}
-                <span onClick={()=>f.setValue("Todos")} style={{cursor:"pointer",fontSize:14,lineHeight:1,opacity:0.7}}>×</span>
+                {f.label}: <strong>{f.value}</strong>
+                <span onClick={()=>f.setValue("Todos")} style={{cursor:"pointer",fontSize:15,lineHeight:1,opacity:0.6,marginLeft:2}}>×</span>
               </span>
             )
           })}
-          <span onClick={onClearAll} style={{fontSize:11,color:C.text4,cursor:"pointer",textDecoration:"underline",marginLeft:2}}>Limpar tudo</span>
+          <span onClick={onClearAll} style={{fontSize:11,color:C.red,cursor:"pointer",fontWeight:500,marginLeft:4}}>Limpar tudo</span>
+        </div>
+      )}
+
+      {/* Painel de filtros — abre inline abaixo */}
+      {showFilters&&(
+        <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:10,padding:"14px 16px",marginBottom:8,boxShadow:shadow.sm}}>
+          <div style={{display:"grid",gridTemplateColumns:`repeat(${Math.min(filters.length,3)},1fr)`,gap:12}}>
+            {filters.map(f=>(
+              <div key={f.key}>
+                <div style={{fontSize:9,color:C.text3,fontWeight:600,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:5}}>{f.label}</div>
+                <select value={f.value} onChange={e=>f.setValue(e.target.value)}
+                  style={{...getINP(),width:"100%",boxSizing:"border-box",fontSize:11}}>
+                  {f.opts.map(o=><option key={o}>{o}</option>)}
+                </select>
+              </div>
+            ))}
+          </div>
+          {totalAtivos>0&&(
+            <button onClick={onClearAll} style={{marginTop:12,background:C.redSoft,border:`1px solid ${C.redBorder}`,color:C.red,borderRadius:7,padding:"6px 16px",fontSize:11,cursor:"pointer",fontWeight:500}}>
+              × Limpar todos os filtros
+            </button>
+          )}
         </div>
       )}
     </div>
