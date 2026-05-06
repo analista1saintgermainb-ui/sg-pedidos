@@ -975,7 +975,8 @@ function KanbanSuporteView({rows, onSelect, selSup, perms, upd, nomeAtendente}) 
     ...col,
     items: rows.filter(r=>{
       const t = classificarProblema(r)
-      if (col.id==="OK") return t==="OK"||t==="ATRASO"||t==="POSSIVEL_EXTRAVIO"      return t===col.id
+      if (col.id==="OK") return t==="OK"||t==="ATRASO"||t==="POSSIVEL_EXTRAVIO"
+      return t===col.id
     })
   }))
   return (
