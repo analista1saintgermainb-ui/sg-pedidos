@@ -458,6 +458,7 @@ function classificarProblema(r) {
   if (s.includes("devolv")||s.includes("recusa"))                        return "DEVOLUCAO"
   if (s.includes("extravia")||s.includes("perdid"))                      return "EXTRAVIO"
   if (s.includes("falha")||s.includes("problema")||(s.includes("tent")&&s.includes("entrega"))) return "ENDERECO"
+  if (s.includes("aguardando_retirada")||s.includes("aguardando retirada")||s.includes("retirada_transportadora")) return "AGUARDANDO"
   if (diasAtraso>0 && dias!==null && dias>4)                             return "POSSIVEL_EXTRAVIO"
   if (diasAtraso>0)                                                       return "ATRASO"
   return "OK"
@@ -506,6 +507,7 @@ const PROBLEMA_CONFIG = {
   ATRASO:            {label:"Atraso",           color:C.amber,bg:C.amberSoft, bd:C.amberBorder,icone:"⏰",sugestao:"Notificar cliente sobre o atraso na entrega"},
   POSSIVEL_EXTRAVIO: {label:"Possível Extravio", color:C.red,  bg:C.redSoft,  bd:C.redBorder,  icone:"🚨",sugestao:"Acionar transportadora imediatamente — possível extravio"},
   EXTRAVIO:          {label:"Objeto Extraviado", color:C.red,  bg:C.redSoft,  bd:C.redBorder,  icone:"🚨",sugestao:"Acionar transportadora imediatamente — confirmar localização do objeto"},
+  AGUARDANDO:        {label:"Aguard. retirada transp.", color:C.blue, bg:C.blueSoft,  bd:C.blueBorder, icone:"🏭",sugestao:"Acionar transportadora para retirada no CD"},
   ENDERECO:          {label:"Problema na entrega", color:C.amber,bg:C.amberSoft, bd:C.amberBorder,icone:"📍",sugestao:"Confirmar dados de endereço com o cliente"},
   DEVOLUCAO:         {label:"Devolução",         color:C.amber,bg:C.amberSoft, bd:C.amberBorder,icone:"↩", sugestao:"Tratar reenvio ou reembolso com o cliente"},
   OK:                {label:"Sem pendências",    color:C.green,bg:C.greenSoft, bd:C.greenBorder,icone:"✓", sugestao:"Pedido sem problemas críticos identificados"},
@@ -962,22 +964,22 @@ const SAMPLE=`Identificador Ecommerce;Destinatário Nome;Estratégia de Frete;Ra
 // ─── App ──────────────────────────────────────────────────────
 // ─── Kanban Suporte ───────────────────────────────────────────
 const KANBAN_COLS = [
-  {id:"DEVOLUCAO",  label:"Devolução",          color:C.amber, bg:C.amberSoft, bd:C.amberBorder, icone:"↩"},
-  {id:"ENDERECO",   label:"Problema na entrega", color:C.amber, bg:C.amberSoft, bd:C.amberBorder, icone:"📍"},
-  {id:"EXTRAVIO",   label:"Extravio",            color:C.red,   bg:C.redSoft,   bd:C.redBorder,   icone:"🚨"},
-  {id:"OK",         label:"Outros",              color:C.text2, bg:C.creamDark, bd:C.border,      icone:"◎"},
+  {id:"DEVOLUCAO",  label:"Devolução",               color:C.amber, bg:C.amberSoft, bd:C.amberBorder, icone:"↩"},
+  {id:"ENDERECO",   label:"Problema na entrega",      color:C.amber, bg:C.amberSoft, bd:C.amberBorder, icone:"📍"},
+  {id:"AGUARDANDO", label:"Aguard. retirada transp.", color:C.blue,  bg:C.blueSoft,  bd:C.blueBorder,  icone:"🏭"},
+  {id:"EXTRAVIO",   label:"Extravio",                 color:C.red,   bg:C.redSoft,   bd:C.redBorder,   icone:"🚨"},
+  {id:"OK",         label:"Outros",                   color:C.text2, bg:C.creamDark, bd:C.border,      icone:"◎"},
 ]
 function KanbanSuporteView({rows, onSelect, selSup, perms, upd, nomeAtendente}) {
   const cols = KANBAN_COLS.map(col=>({
     ...col,
     items: rows.filter(r=>{
       const t = classificarProblema(r)
-      if (col.id==="OK") return t==="OK"||t==="ATRASO"||t==="POSSIVEL_EXTRAVIO"
-      return t===col.id
+      if (col.id==="OK") return t==="OK"||t==="ATRASO"||t==="POSSIVEL_EXTRAVIO"      return t===col.id
     })
   }))
   return (
-    <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,padding:"14px 18px",overflowX:"auto",height:"100%"}}>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:10,padding:"14px 18px",overflowX:"auto",height:"100%"}}>
       {cols.map(col=>(
         <div key={col.id} style={{background:col.bg,borderRadius:12,border:`1px solid ${col.bd}`,display:"flex",flexDirection:"column",minHeight:200}}>
           <div style={{padding:"10px 14px",borderBottom:`1px solid ${col.bd}`,display:"flex",alignItems:"center",gap:6}}>
