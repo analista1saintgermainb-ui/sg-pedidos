@@ -1143,20 +1143,48 @@ function mapBoxlinkRow(item, i) {
   }
 }
 
+// Paths possíveis para o endpoint de última ocorrência por período
+const BOXLINK_TRACKING_PATHS = [
+  "/v2/tracking/ultima-ocorrencia",
+  "/v2/tracking/ocorrencias",
+  "/v2/tracking/periodo",
+  "/rastreamento/v2/ultima-ocorrencia",
+  "/v2/rastreamento/ultima-ocorrencia",
+  "/rastreamento/ultima-ocorrencia",  // tentado e deu 404, mantém para log
+]
+
+let _bxWorkingPath = null // cache do path que funcionou
+
 async function fetchBoxlinkPage(bToken, from, to, page) {
   const fmt = d => d.toISOString().slice(0,19)
-  const url = `${BOXLINK_API}/rastreamento/ultima-ocorrencia?dataHoraInicio=${fmt(from)}&dataHoraFim=${fmt(to)}&page=${page}&size=100`
-  const r = await fetch(url, { headers:{ Authorization:`Bearer ${bToken}`, "Content-Type":"application/json" } })
-  if (!r.ok) {
-    const txt = await r.text()
-    throw new Error(`Boxlink ${r.status}: ${txt}`)
+  const params = `dataHoraInicio=${fmt(from)}&dataHoraFim=${fmt(to)}&page=${page}&size=100`
+  const headers = { Authorization:`Bearer ${bToken}`, "Content-Type":"application/json" }
+
+  // Usa path que já funcionou antes
+  const paths = _bxWorkingPath ? [_bxWorkingPath] : BOXLINK_TRACKING_PATHS
+
+  for (const path of paths) {
+    const url = `${BOXLINK_API}${path}?${params}`
+    try {
+      const r = await fetch(url, { headers })
+      if (r.status === 404) continue // tenta próximo
+      if (!r.ok) {
+        const txt = await r.text()
+        throw new Error(`Boxlink ${r.status}: ${txt}`)
+      }
+      _bxWorkingPath = path // salva o que funcionou
+      const d = await r.json()
+      if (Array.isArray(d)) return { items: d, hasMore: false }
+      const items = d.content || d.data || d.envios || d.ocorrencias || []
+      const hasMore = page < (d.totalPages || 1) - 1
+      return { items, hasMore }
+    } catch(e) {
+      if (e.message.startsWith("Boxlink")) throw e
+      // fetch error (CORS etc) — relança
+      throw e
+    }
   }
-  const d = await r.json()
-  // Boxlink pode retornar { content:[...], totalPages } ou array direto
-  if (Array.isArray(d)) return { items: d, hasMore: false }
-  const items = d.content || d.data || d.envios || []
-  const hasMore = page < (d.totalPages||1) - 1
-  return { items, hasMore }
+  throw new Error("Nenhum endpoint Boxlink respondeu. Verifique a documentação e informe o path correto.")
 }
 
 async function syncBoxlinkFull(bToken, onPartial) {
