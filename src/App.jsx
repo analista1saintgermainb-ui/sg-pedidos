@@ -419,14 +419,20 @@ function getTemplate(r, ch, nomeAtendente) {
   const devolv = m.includes("devolu")||m.includes("recusa")
   const atraso = m.includes("atraso")
   const parado = diasSemMov(r.ultimaMov)!==null&&diasSemMov(r.ultimaMov)>=ALERTA_DIAS
-  const linkRastreio = r.rastreio?`https://saintgermain.rastreio.estoca.com.br/tracking?code=${r.rastreio}`:null
+  const tr = (r.transportadora||"").toLowerCase()
+  const linkRastreio = tr.includes("correio")      ? "https://rastreamento.correios.com.br/app/index.php"
+    : tr.includes("loggi")                          ? "https://www.loggi.com/rastreador/"
+    : tr.includes("total")                          ? "https://totalconecta.totalexpress.com.br/rastreamento"
+    : null // J&T, Estoca, Mandaê — sem link
 
   if (ch==="wpp") {
     if (extrav) return `Olá, ${nome}! Tudo bem? Me chamo ${atend} e faço parte do time de encantamento da SG 🤍\n\nEstou entrando em contato pois identificamos uma ocorrência no seu pedido *#${r.nuvem}*.\n\nSua encomenda está com o status de *objeto extraviado* junto à transportadora *${r.transportadora}*. Já acionamos nossa equipe para apurar o caso com urgência.\n\nRetornaremos com uma atualização em até *2 dias úteis*. Pedimos sinceras desculpas pelo transtorno! 🙏\n\nQualquer dúvida estamos à disposição 🤍\n${atend} — Time de Encantamento SG`
     if (devolv) return `Olá, ${nome}! Tudo bem? Me chamo ${atend} e faço parte do time de encantamento da SG 🤍\n\nEstou entrando em contato sobre seu pedido *#${r.nuvem}*.\n\nIdentificamos que sua encomenda foi *devolvida* ao nosso centro de distribuição após tentativas de entrega sem sucesso. 😔\n\nPara realizarmos um novo envio sem nenhum custo adicional, poderia confirmar seu endereço de entrega completo respondendo esta mensagem?\n\nEstamos aqui para resolver isso da melhor forma para você 🤍\n${atend} — Time de Encantamento SG`
     if (atraso) return `Olá, ${nome}! Tudo bem? Me chamo ${atend} e faço parte do time de encantamento da SG 🤍\n\nEstou entrando em contato sobre seu pedido *#${r.nuvem}*.\n\nIdentificamos um atraso na entrega pela transportadora *${r.transportadora}*. O prazo previsto era *${r.prazo||"—"}* e já estamos acompanhando de perto.\n\nAssim que tivermos uma atualização, te avisamos imediatamente! Pedimos desculpas pelo inconveniente 🙏\n\nQualquer dúvida estamos à disposição 🤍\n${atend} — Time de Encantamento SG`
     if (parado) return `Olá, ${nome}! Tudo bem? Me chamo ${atend} e faço parte do time de encantamento da SG 🤍\n\nEstou entrando em contato sobre seu pedido *#${r.nuvem}*.\n\nPercebemos que seu pedido está *em trânsito* com a transportadora *${r.transportadora}*, mas sem novas atualizações de rastreio nos últimos dias. Já estamos apurando a situação.\n\nRetornaremos em breve! Pedimos desculpas pela espera 🙏\n\nQualquer dúvida estamos à disposição 🤍\n${atend} — Time de Encantamento SG`
-    return `Olá, ${nome}! Tudo bem? Me chamo ${atend} e faço parte do time de encantamento da SG 🤍\n\nVocê pode rastrear seu pedido *#${r.nuvem}* diretamente neste link:\n${linkRastreio||r.rastreio||"—"}\n\nStatus atual: *${r.status}*${r.prazo?`\nPrazo previsto: *${r.prazo}*`:""}\n\nSe tiver qualquer dúvida, estamos à disposição! 🤍\n${atend} — Time de Encantamento SG`
+    return linkRastreio
+      ? `Olá, ${nome}! Tudo bem? Me chamo ${atend} e faço parte do time de encantamento da SG 🤍\n\nVocê pode rastrear seu pedido *#${r.nuvem}* diretamente neste link:\n${linkRastreio}\n\nStatus atual: *${r.status}*${r.prazo?`\nPrazo previsto: *${r.prazo}*`:""}\n\nSe tiver qualquer dúvida, estamos à disposição! 🤍\n${atend} — Time de Encantamento SG`
+      : `Olá, ${nome}! Tudo bem? Me chamo ${atend} e faço parte do time de encantamento da SG 🤍\n\nEstou entrando em contato sobre seu pedido *#${r.nuvem}*.\n\nStatus atual: *${r.status}*${r.prazo?`\nPrazo previsto: *${r.prazo}*`:""}\n\nQualquer dúvida estamos à disposição! 🤍\n${atend} — Time de Encantamento SG`
   } else {
     const assinatura = `Atenciosamente,\n${atend}\nTime de Encantamento — Saint Germain`
     const det = `• Pedido: #${r.nuvem}\n• Transportadora: ${r.transportadora}\n• Rastreio: ${r.rastreio||"—"}\n• Prazo previsto: ${r.prazo||"—"}`
@@ -434,7 +440,9 @@ function getTemplate(r, ch, nomeAtendente) {
     if (devolv) return `Assunto: Pedido #${r.nuvem} — Devolução de Encomenda\n\nOlá, ${r.destinatario}! Tudo bem?\n\nMe chamo ${atend} e faço parte do time de encantamento da SG 🤍\n\nSua encomenda retornou ao nosso centro de distribuição após tentativas de entrega sem sucesso.\n\n${det}\n\nPara realizarmos um novo envio sem custo adicional, pedimos que confirme seu endereço respondendo a este chamado.\n\n${assinatura}`
     if (atraso) return `Assunto: Pedido #${r.nuvem} — Atraso na Entrega\n\nOlá, ${r.destinatario}! Tudo bem?\n\nMe chamo ${atend} e faço parte do time de encantamento da SG 🤍\n\nIdentificamos um atraso na entrega do seu pedido.\n\n${det}\n\nEstamos acompanhando o caso junto à transportadora e te manteremos informado(a).\n\nPedimos desculpas pelo inconveniente 🙏\n\n${assinatura}`
     if (parado) return `Assunto: Pedido #${r.nuvem} — Atualização de Rastreio\n\nOlá, ${r.destinatario}! Tudo bem?\n\nMe chamo ${atend} e faço parte do time de encantamento da SG 🤍\n\nSeu pedido está em trânsito, porém sem novas atualizações de rastreio nos últimos dias. Já estamos apurando com a transportadora.\n\n${det}\n\nRetornaremos em breve. Pedimos desculpas pela espera 🙏\n\n${assinatura}`
-    return `Assunto: Pedido #${r.nuvem} — Rastreio\n\nOlá, ${r.destinatario}! Tudo bem?\n\nMe chamo ${atend} e faço parte do time de encantamento da SG 🤍\n\nVocê pode rastrear seu pedido neste link:\n${linkRastreio||r.rastreio||"—"}\n\n${det}\nStatus atual: ${r.status}\n\nQualquer dúvida estamos à disposição! 🤍\n\n${assinatura}`
+    return linkRastreio
+      ? `Assunto: Pedido #${r.nuvem} — Rastreio\n\nOlá, ${r.destinatario}! Tudo bem?\n\nMe chamo ${atend} e faço parte do time de encantamento da SG 🤍\n\nVocê pode rastrear seu pedido neste link:\n${linkRastreio}\n\n${det}\nStatus atual: ${r.status}\n\nQualquer dúvida estamos à disposição! 🤍\n\n${assinatura}`
+      : `Assunto: Pedido #${r.nuvem} — Atualização\n\nOlá, ${r.destinatario}! Tudo bem?\n\nMe chamo ${atend} e faço parte do time de encantamento da SG 🤍\n\nEntramos em contato para informar sobre seu pedido.\n\n${det}\nStatus atual: ${r.status}\n\nQualquer dúvida estamos à disposição! 🤍\n\n${assinatura}`
   }
 }
 
