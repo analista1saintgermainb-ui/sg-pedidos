@@ -1011,6 +1011,75 @@ function KanbanSuporteView({rows, onSelect, selSup, perms, upd, nomeAtendente}) 
   )
 }
 
+// ─── FilterBar — chips system ─────────────────────────────────
+function FilterBar({search, onSearch, showFilters, onToggleFilters, filters, onClearAll, compact}) {
+  const chipColors = {
+    "Alta":           {color:C.red,   bg:C.redSoft,   bd:C.redBorder},
+    "Média":          {color:C.amber, bg:C.amberSoft, bd:C.amberBorder},
+    "Baixa":          {color:C.green, bg:C.greenSoft, bd:C.greenBorder},
+    "Aberto":         {color:C.red,   bg:C.redSoft,   bd:C.redBorder},
+    "Em andamento":   {color:C.amber, bg:C.amberSoft, bd:C.amberBorder},
+    "Atraso":         {color:C.red,   bg:C.redSoft,   bd:C.redBorder},
+    "Antes do Prazo": {color:C.green, bg:C.greenSoft, bd:C.greenBorder},
+    "No Prazo":       {color:C.green, bg:C.greenSoft, bd:C.greenBorder},
+    "Sim":            {color:C.red,   bg:C.redSoft,   bd:C.redBorder},
+  }
+  const activeFilters = filters.filter(f=>f.value!=="Todos")
+  const totalAtivos = activeFilters.length
+
+  return (
+    <div style={{marginBottom:compact?8:14}}>
+      <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:activeFilters.length>0?8:0}}>
+        <input value={search} onChange={e=>onSearch(e.target.value)}
+          placeholder={compact?"Buscar...":"Buscar pedido, destinatário, rastreio..."}
+          style={{...getINP(),flex:1,minWidth:compact?80:160,fontSize:compact?11:12}}/>
+        <div style={{position:"relative"}}>
+          <button onClick={onToggleFilters}
+            style={{background:showFilters?C.brand:C.white,border:`1px solid ${showFilters?C.brand:C.border}`,color:showFilters?C.white:C.text2,borderRadius:8,padding:compact?"7px 12px":"9px 16px",fontSize:11,cursor:"pointer",fontWeight:500,display:"flex",alignItems:"center",gap:8,whiteSpace:"nowrap",transition:"all .15s"}}>
+            ⚙ Filtros
+            {totalAtivos>0&&<span style={{background:C.red,color:C.white,borderRadius:10,padding:"1px 7px",fontSize:10,fontWeight:700,lineHeight:1.4}}>{totalAtivos}</span>}
+          </button>
+          {showFilters&&(
+            <div style={{position:"fixed",zIndex:999,background:C.white,border:`1px solid ${C.border}`,borderRadius:12,boxShadow:shadow.lg,minWidth:260,padding:16,marginTop:6}}
+              onClick={e=>e.stopPropagation()}>
+              <div style={{fontSize:9,color:C.text3,fontWeight:600,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:12}}>Filtrar por</div>
+              {filters.map(f=>(
+                <div key={f.key} style={{marginBottom:11}}>
+                  <div style={{fontSize:10,color:C.text3,fontWeight:500,marginBottom:5}}>{f.label}</div>
+                  <select value={f.value} onChange={e=>f.setValue(e.target.value)}
+                    style={{...getINP(),width:"100%",boxSizing:"border-box",fontSize:11}}>
+                    {f.opts.map(o=><option key={o}>{o}</option>)}
+                  </select>
+                </div>
+              ))}
+              {totalAtivos>0&&(
+                <button onClick={onClearAll}
+                  style={{width:"100%",background:C.redSoft,border:`1px solid ${C.redBorder}`,color:C.red,borderRadius:7,padding:"7px 0",fontSize:11,cursor:"pointer",fontWeight:500,marginTop:4}}>
+                  × Limpar todos os filtros
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+      {activeFilters.length>0&&(
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+          {activeFilters.map(f=>{
+            const s = chipColors[f.value]||{color:C.blue,bg:C.blueSoft,bd:C.blueBorder}
+            return (
+              <span key={f.key} style={{background:s.bg,color:s.color,border:`1px solid ${s.bd}`,borderRadius:20,padding:"3px 8px 3px 12px",fontSize:11,fontWeight:500,display:"flex",alignItems:"center",gap:5,whiteSpace:"nowrap"}}>
+                {f.label}: {f.value}
+                <span onClick={()=>f.setValue("Todos")} style={{cursor:"pointer",fontSize:14,lineHeight:1,opacity:0.7}}>×</span>
+              </span>
+            )
+          })}
+          <span onClick={onClearAll} style={{fontSize:11,color:C.text4,cursor:"pointer",textDecoration:"underline",marginLeft:2}}>Limpar tudo</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function App() {
   const [session,setSession]=useState(null)
   const [perfil,setPerfil]=useState(null)
@@ -1567,62 +1636,18 @@ export default function App() {
               </button>
             ))}
           </div>
-          {/* ── Filtros Logística — chips ── */}
-          {(()=>{
-            const activeFilters = [
-              lSt!=="Todos"      && {key:"lSt",   label:`Status: ${lSt}`,          color:C.blue,   bg:C.blueSoft,   bd:C.blueBorder,  clear:()=>setLSt("Todos")},
-              lTr!=="Todos"      && {key:"lTr",   label:`Transp.: ${lTr}`,          color:C.text2,  bg:C.creamDark,  bd:C.border,      clear:()=>setLTr("Todos")},
-              lUrg!=="Todos"     && {key:"lUrg",  label:`Urgência: ${lUrg}`,        color:lUrg==="Alta"?C.red:lUrg==="Média"?C.amber:C.green, bg:lUrg==="Alta"?C.redSoft:lUrg==="Média"?C.amberSoft:C.greenSoft, bd:lUrg==="Alta"?C.redBorder:lUrg==="Média"?C.amberBorder:C.greenBorder, clear:()=>setLUrg("Todos")},
-              lSitPrazo!=="Todos"&& {key:"lSit",  label:`Prazo: ${lSitPrazo}`,      color:lSitPrazo==="Atraso"?C.red:C.green, bg:lSitPrazo==="Atraso"?C.redSoft:C.greenSoft, bd:lSitPrazo==="Atraso"?C.redBorder:C.greenBorder, clear:()=>setLSitPrazo("Todos")},
-              lAc!=="Todos"      && {key:"lAc",   label:`Acionar: ${lAc}`,          color:C.amber,  bg:C.amberSoft,  bd:C.amberBorder, clear:()=>setLAc("Todos")},
-            ].filter(Boolean)
-            const totalAtivos = activeFilters.length
-            return (
-              <div style={{marginBottom:14}}>
-                <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:activeFilters.length>0?8:0}}>
-                  <input value={lSrch} onChange={e=>setLSrch(e.target.value)} placeholder="Buscar pedido, destinatário, rastreio..." style={{...getINP(),flex:1,minWidth:160}}/>
-                  <div style={{position:"relative"}}>
-                    <button onClick={()=>setLShowFilters(v=>!v)}
-                      style={{background:lShowFilters?C.brand:C.white,border:`1px solid ${lShowFilters?C.brand:C.border}`,color:lShowFilters?C.white:C.text2,borderRadius:8,padding:"9px 16px",fontSize:11,cursor:"pointer",fontWeight:500,display:"flex",alignItems:"center",gap:8,whiteSpace:"nowrap"}}>
-                      ⚙ Filtros
-                      {totalAtivos>0&&<span style={{background:C.red,color:C.white,borderRadius:10,padding:"1px 7px",fontSize:10,fontWeight:700}}>{totalAtivos}</span>}
-                    </button>
-                    {lShowFilters&&(
-                      <div style={{position:"absolute",top:"calc(100% + 6px)",right:0,background:C.white,border:`1px solid ${C.border}`,borderRadius:12,boxShadow:shadow.lg,zIndex:100,minWidth:280,padding:16}}>
-                        <div style={{fontSize:9,color:C.text3,fontWeight:600,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:12}}>Filtrar por</div>
-                        {[
-                          ["Status",       lSt,       setLSt,       stOpts],
-                          ["Transportadora",lTr,      setLTr,       trOpts],
-                          ["Urgência",     lUrg,      setLUrg,      ["Todos","Alta","Média","Baixa"]],
-                          ["Situação prazo",lSitPrazo,setLSitPrazo,["Todos","Antes do Prazo","No Prazo","Atraso"]],
-                          ["Acionar?",     lAc,       setLAc,       ["Todos","Sim","Avaliar","Não"]],
-                        ].map(([lbl,val,setter,opts])=>(
-                          <div key={lbl} style={{marginBottom:12}}>
-                            <div style={{fontSize:10,color:C.text3,fontWeight:500,marginBottom:5}}>{lbl}</div>
-                            <select value={val} onChange={e=>setter(e.target.value)} style={{...getINP(),width:"100%",boxSizing:"border-box",fontSize:11}}>
-                              {opts.map(o=><option key={o}>{o}</option>)}
-                            </select>
-                          </div>
-                        ))}
-                        {totalAtivos>0&&<button onClick={()=>{setLSt("Todos");setLTr("Todos");setLUrg("Todos");setLSitPrazo("Todos");setLAc("Todos");setLShowFilters(false)}} style={{width:"100%",background:C.redSoft,border:`1px solid ${C.redBorder}`,color:C.red,borderRadius:7,padding:"7px 0",fontSize:11,cursor:"pointer",fontWeight:500,marginTop:4}}>× Limpar todos os filtros</button>}
-                      </div>
-                    )}
-                  </div>
-                </div>
-                {activeFilters.length>0&&(
-                  <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
-                    {activeFilters.map(f=>(
-                      <span key={f.key} style={{background:f.bg,color:f.color,border:`1px solid ${f.bd}`,borderRadius:20,padding:"3px 10px 3px 12px",fontSize:11,fontWeight:500,display:"flex",alignItems:"center",gap:6}}>
-                        {f.label}
-                        <span onClick={f.clear} style={{cursor:"pointer",opacity:0.7,fontSize:13,lineHeight:1}}>×</span>
-                      </span>
-                    ))}
-                    <span onClick={()=>{setLSt("Todos");setLTr("Todos");setLUrg("Todos");setLSitPrazo("Todos");setLAc("Todos");setLSrch("")}} style={{fontSize:11,color:C.text4,cursor:"pointer",textDecoration:"underline",marginLeft:2}}>Limpar tudo</span>
-                  </div>
-                )}
-              </div>
-            )
-          })()}
+          <FilterBar
+            search={lSrch} onSearch={setLSrch}
+            showFilters={lShowFilters} onToggleFilters={()=>setLShowFilters(v=>!v)}
+            filters={[
+              {key:"lSt",  label:"Status",        value:lSt,        setValue:setLSt,        opts:stOpts},
+              {key:"lTr",  label:"Transportadora", value:lTr,        setValue:setLTr,        opts:trOpts},
+              {key:"lUrg", label:"Urgência",       value:lUrg,       setValue:setLUrg,       opts:["Todos","Alta","Média","Baixa"]},
+              {key:"lSit", label:"Situação prazo", value:lSitPrazo,  setValue:setLSitPrazo,  opts:["Todos","Antes do Prazo","No Prazo","Atraso"]},
+              {key:"lAc",  label:"Acionar?",       value:lAc,        setValue:setLAc,        opts:["Todos","Sim","Avaliar","Não"]},
+            ]}
+            onClearAll={()=>{setLSt("Todos");setLTr("Todos");setLUrg("Todos");setLSitPrazo("Todos");setLAc("Todos");setLSrch("") ;setLShowFilters(false)}}
+          />
           {perms?.canSendSupport&&selIds.size>0&&(
             <div style={{background:C.brand,borderRadius:10,padding:"12px 20px",marginBottom:14,display:"flex",alignItems:"center",gap:10,boxShadow:shadow.md}}>
               <span style={{color:"#888",fontSize:12,flex:1}}>{selIds.size} pedido{selIds.size>1?"s":""} selecionado{selIds.size>1?"s":""}</span>
@@ -1710,60 +1735,17 @@ export default function App() {
               <div style={{display:"flex",gap:6,marginBottom:8}}>
               <button onClick={()=>setSupView(v=>v==="lista"?"kanban":"lista")} style={{background:supView==="kanban"?C.brand:C.white,border:`1px solid ${supView==="kanban"?C.brand:C.border}`,color:supView==="kanban"?C.white:C.text2,borderRadius:8,padding:"5px 12px",fontSize:10,cursor:"pointer",fontWeight:500,letterSpacing:"0.06em"}}>{supView==="kanban"?"☰ Lista":"⊞ Kanban"}</button>
             </div>
-            <div style={{display:"flex",gap:6,marginBottom:selSupIds.size>0?10:0}}>
-                {/* ── Filtros Suporte — chips ── */}
-                {(()=>{
-                  const sActiveFilters = [
-                    sAtend!=="Todos" && {key:"at",   label:`Atendimento: ${sAtend}`, color:sAtend==="Aberto"?C.red:C.amber,   bg:sAtend==="Aberto"?C.redSoft:C.amberSoft,   bd:sAtend==="Aberto"?C.redBorder:C.amberBorder, clear:()=>setSAtend("Todos")},
-                    sUrg!=="Todos"   && {key:"urg",  label:`Urgência: ${sUrg}`,      color:sUrg==="Alta"?C.red:sUrg==="Média"?C.amber:C.green, bg:sUrg==="Alta"?C.redSoft:sUrg==="Média"?C.amberSoft:C.greenSoft, bd:sUrg==="Alta"?C.redBorder:sUrg==="Média"?C.amberBorder:C.greenBorder, clear:()=>setSUrg("Todos")},
-                    sResp!=="Todos"  && {key:"resp", label:`Resp.: ${sResp}`,         color:C.blue, bg:C.blueSoft, bd:C.blueBorder, clear:()=>setSResp("Todos")},
-                  ].filter(Boolean)
-                  const sTotalAtivos = sActiveFilters.length
-                  return (
-                    <div style={{width:"100%"}}>
-                      <div style={{display:"flex",gap:6,marginBottom:sActiveFilters.length>0?7:0}}>
-                        <input value={sSrch} onChange={e=>setSSrch(e.target.value)} placeholder="Buscar..." style={{...getINP(),flex:1,fontSize:11}}/>
-                        <div style={{position:"relative"}}>
-                          <button onClick={()=>setSShowFilters(v=>!v)}
-                            style={{background:sShowFilters?C.brand:C.white,border:`1px solid ${sShowFilters?C.brand:C.border}`,color:sShowFilters?C.white:C.text2,borderRadius:8,padding:"7px 12px",fontSize:11,cursor:"pointer",fontWeight:500,display:"flex",alignItems:"center",gap:6,whiteSpace:"nowrap"}}>
-                            ⚙ Filtros
-                            {sTotalAtivos>0&&<span style={{background:C.red,color:C.white,borderRadius:10,padding:"1px 6px",fontSize:10,fontWeight:700}}>{sTotalAtivos}</span>}
-                          </button>
-                          {sShowFilters&&(
-                            <div style={{position:"absolute",top:"calc(100% + 6px)",right:0,background:C.white,border:`1px solid ${C.border}`,borderRadius:12,boxShadow:shadow.lg,zIndex:100,minWidth:240,padding:14}}>
-                              <div style={{fontSize:9,color:C.text3,fontWeight:600,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:12}}>Filtrar por</div>
-                              {[
-                                ["Atendimento", sAtend, setSAtend, ["Todos","Aberto","Em andamento"]],
-                                ["Urgência",    sUrg,   setSUrg,   ["Todos","Alta","Média","Baixa"]],
-                                ["Responsável", sResp,  setSResp,  ["Todos",...respOpts]],
-                              ].map(([lbl,val,setter,opts])=>(
-                                <div key={lbl} style={{marginBottom:11}}>
-                                  <div style={{fontSize:10,color:C.text3,fontWeight:500,marginBottom:5}}>{lbl}</div>
-                                  <select value={val} onChange={e=>setter(e.target.value)} style={{...getINP(),width:"100%",boxSizing:"border-box",fontSize:11}}>
-                                    {opts.map(o=><option key={o}>{o}</option>)}
-                                  </select>
-                                </div>
-                              ))}
-                              {sTotalAtivos>0&&<button onClick={()=>{setSAtend("Todos");setSUrg("Todos");setSResp("Todos");setSShowFilters(false)}} style={{width:"100%",background:C.redSoft,border:`1px solid ${C.redBorder}`,color:C.red,borderRadius:7,padding:"6px 0",fontSize:11,cursor:"pointer",fontWeight:500,marginTop:4}}>× Limpar filtros</button>}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      {sActiveFilters.length>0&&(
-                        <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center",marginBottom:7}}>
-                          {sActiveFilters.map(f=>(
-                            <span key={f.key} style={{background:f.bg,color:f.color,border:`1px solid ${f.bd}`,borderRadius:20,padding:"2px 9px 2px 11px",fontSize:10,fontWeight:500,display:"flex",alignItems:"center",gap:5}}>
-                              {f.label}
-                              <span onClick={f.clear} style={{cursor:"pointer",opacity:0.7,fontSize:12,lineHeight:1}}>×</span>
-                            </span>
-                          ))}
-                          <span onClick={()=>{setSAtend("Todos");setSUrg("Todos");setSResp("Todos");setSSrch("")}} style={{fontSize:10,color:C.text4,cursor:"pointer",textDecoration:"underline"}}>Limpar tudo</span>
-                        </div>
-                      )}
-                    </div>
-                  )
-                })()}
-              </div>
+            <FilterBar
+              search={sSrch} onSearch={setSSrch}
+              showFilters={sShowFilters} onToggleFilters={()=>setSShowFilters(v=>!v)}
+              filters={[
+                {key:"at",   label:"Atendimento", value:sAtend, setValue:setSAtend, opts:["Todos","Aberto","Em andamento"]},
+                {key:"urg",  label:"Urgência",    value:sUrg,   setValue:setSUrg,   opts:["Todos","Alta","Média","Baixa"]},
+                {key:"resp", label:"Responsável", value:sResp,  setValue:setSResp,  opts:["Todos",...respOpts]},
+              ]}
+              onClearAll={()=>{setSAtend("Todos");setSUrg("Todos");setSResp("Todos");setSSrch("");setSShowFilters(false)}}
+              compact
+            />
               {perms?.canOperate&&selSupIds.size>0&&(
                 <div style={{background:C.brand,borderRadius:8,padding:"9px 14px",display:"flex",alignItems:"center",gap:8}}>
                   <span style={{color:"#888",fontSize:11,flex:1}}>{selSupIds.size} selecionado{selSupIds.size>1?"s":""}</span>
