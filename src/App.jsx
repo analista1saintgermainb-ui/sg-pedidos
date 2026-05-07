@@ -672,6 +672,14 @@ function Toast({toasts}) {
 
 const getINP = () => ({borderRadius:4,border:`1px solid ${C.borderDark}`,padding:"9px 12px",fontSize:12,background:C.white,color:C.text1,outline:"none",transition:"border-color .2s, box-shadow .2s"})
 
+function SGMonogram({size=44}) {
+  return <div style={{width:size,height:size,display:"flex",alignItems:"center",justifyContent:"center",background:"#000",color:"#fff",fontFamily:"Georgia, 'Times New Roman', serif",fontSize:Math.round(size*0.62),lineHeight:1,fontWeight:400,letterSpacing:"-0.18em",paddingRight:Math.round(size*0.08)}}>SG</div>
+}
+
+function SGWordmark({dark=false, size=17}) {
+  return <div style={{color:dark?"#fff":"#111",fontSize:size,textTransform:"uppercase",fontWeight:800,letterSpacing:"0.38em",lineHeight:1,whiteSpace:"nowrap"}}>SAINT GERMAIN</div>
+}
+
 // ─── Componentes de Suporte (NOVOS) ──────────────────────────
 
 // HeaderProblema: identifica e destaca visualmente o tipo de problema
@@ -877,7 +885,8 @@ function LoginScreen({onLogin}) {
       <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:600,height:600,borderRadius:"50%",border:`1px solid ${C.gold}18`,pointerEvents:"none"}}/>
       <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:400,height:400,borderRadius:"50%",border:`1px solid ${C.gold}12`,pointerEvents:"none"}}/>
       <div style={{textAlign:"center",marginBottom:48,position:"relative"}}>
-        <div style={{fontSize:30,color:C.white,textTransform:"uppercase",fontWeight:800,letterSpacing:"0.36em",lineHeight:1,whiteSpace:"nowrap"}}>SAINT GERMAIN</div>
+        <div style={{display:"flex",justifyContent:"center",marginBottom:18}}><SGMonogram size={72}/></div>
+        <SGWordmark dark size={24}/>
         <div style={{width:48,height:"1px",background:"#BDBDBD",margin:"16px auto"}}/>
         <div style={{fontSize:9,letterSpacing:"0.28em",color:"#BDBDBD",textTransform:"uppercase"}}>Central de Pedidos</div>
       </div>
@@ -1820,7 +1829,7 @@ export default function App() {
       <div style={{background:C.brand,padding:"0 28px",display:"flex",alignItems:"stretch",justifyContent:"space-between",borderBottom:`1px solid ${C.borderDark}`}}>
         <div style={{display:"flex",alignItems:"center",gap:22,padding:"12px 0"}}>
           <div style={{minWidth:184}}>
-            <div style={{fontSize:17,color:C.white,textTransform:"uppercase",fontWeight:800,letterSpacing:"0.36em",lineHeight:1,whiteSpace:"nowrap"}}>SAINT GERMAIN</div>
+            <SGWordmark dark size={17}/>
             <div style={{fontSize:9,color:"#BDBDBD",textTransform:"uppercase",marginTop:7,fontWeight:700,letterSpacing:"0.16em"}}>Central de Pedidos</div>
           </div>
           <div style={{width:1,height:38,background:"#2B2B2B"}}/>
