@@ -6,24 +6,24 @@ import * as XLSX from 'xlsx'
 // ─── Temas claro e escuro ─────────────────────────────────────
 const CL = {
   brand:      "#050505", brandSoft:  "#141414",
-  gold:       "#9B8246", goldLight:  "#B79C5B", goldDim: "#6E5A2B",
+  gold:       "#111111", goldLight:  "#2A2A2A", goldDim: "#5E5E5E",
   cream:      "#F6F5F1", creamDark:  "#ECEAE4",
   white:      "#FFFFFF", border:     "#DEDAD0", borderDark: "#C7C2B7",
   text1:      "#111111", text2:      "#4E4A44", text3: "#858078", text4: "#B8B2A8",
   red:        "#C0392B", redSoft:    "#F9ECEB", redBorder:  "#EBCBC8",
   green:      "#2E7D50", greenSoft:  "#EAF4EE", greenBorder:"#C0DCCB",
-  amber:      "#8C6D1F", amberSoft:  "#FDF6E3", amberBorder:"#E8D5A3",
+  amber:      "#595959", amberSoft:  "#F1F1EF", amberBorder:"#D8D8D2",
   blue:       "#1A5276", blueSoft:   "#EAF2FB", blueBorder: "#AACDE6",
 }
 const CD = {
   brand:      "#F7F6F1", brandSoft:  "#E3DFD4",
-  gold:       "#C4A25D", goldLight:  "#D5B974", goldDim: "#9B8246",
+  gold:       "#F7F6F1", goldLight:  "#FFFFFF", goldDim: "#BDBDBD",
   cream:      "#080808", creamDark:  "#111111",
   white:      "#181818", border:     "#2A2A2A", borderDark: "#3A3A3A",
   text1:      "#F7F6F1", text2:      "#C9C3B8", text3: "#8A8378", text4: "#5E584F",
   red:        "#E05555", redSoft:    "#2A1212", redBorder:  "#4A2020",
   green:      "#4AB870", greenSoft:  "#0A2015", greenBorder:"#1A4030",
-  amber:      "#C89830", amberSoft:  "#281E00", amberBorder:"#4A3800",
+  amber:      "#D6D1C8", amberSoft:  "#1C1C1C", amberBorder:"#3A3A3A",
   blue:       "#5A9AD4", blueSoft:   "#0A1825", blueBorder: "#1A3A55",
 }
 // C é mutável — applyTheme() troca os valores em re-render
@@ -877,9 +877,9 @@ function LoginScreen({onLogin}) {
       <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:600,height:600,borderRadius:"50%",border:`1px solid ${C.gold}18`,pointerEvents:"none"}}/>
       <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:400,height:400,borderRadius:"50%",border:`1px solid ${C.gold}12`,pointerEvents:"none"}}/>
       <div style={{textAlign:"center",marginBottom:48,position:"relative"}}>
-        <div style={{fontSize:34,color:C.white,textTransform:"uppercase",fontWeight:800,lineHeight:0.95}}>SAINT<br/>GERMAIN</div>
-        <div style={{width:48,height:"1px",background:C.gold,margin:"16px auto"}}/>
-        <div style={{fontSize:9,letterSpacing:"0.35em",color:`${C.gold}99`,textTransform:"uppercase"}}>Central de Pedidos</div>
+        <div style={{fontSize:30,color:C.white,textTransform:"uppercase",fontWeight:800,letterSpacing:"0.36em",lineHeight:1,whiteSpace:"nowrap"}}>SAINT GERMAIN</div>
+        <div style={{width:48,height:"1px",background:"#BDBDBD",margin:"16px auto"}}/>
+        <div style={{fontSize:9,letterSpacing:"0.28em",color:"#BDBDBD",textTransform:"uppercase"}}>Central de Pedidos</div>
       </div>
       <div style={{background:C.white,borderRadius:16,padding:"40px 44px",width:"100%",maxWidth:400,boxShadow:shadow.lg,position:"relative"}}>
         <div style={{position:"absolute",top:0,left:"50%",transform:"translateX(-50%)",width:48,height:2,background:C.gold,borderRadius:1}}/>
@@ -1820,9 +1820,8 @@ export default function App() {
       <div style={{background:C.brand,padding:"0 28px",display:"flex",alignItems:"stretch",justifyContent:"space-between",borderBottom:`1px solid ${C.borderDark}`}}>
         <div style={{display:"flex",alignItems:"center",gap:22,padding:"12px 0"}}>
           <div style={{minWidth:184}}>
-            <div style={{fontSize:18,color:C.white,textTransform:"uppercase",fontWeight:800,lineHeight:0.95}}>SAINT</div>
-            <div style={{fontSize:18,color:C.white,textTransform:"uppercase",fontWeight:800,lineHeight:0.95}}>GERMAIN</div>
-            <div style={{fontSize:9,color:C.gold,textTransform:"uppercase",marginTop:6,fontWeight:700}}>Central de Pedidos</div>
+            <div style={{fontSize:17,color:C.white,textTransform:"uppercase",fontWeight:800,letterSpacing:"0.36em",lineHeight:1,whiteSpace:"nowrap"}}>SAINT GERMAIN</div>
+            <div style={{fontSize:9,color:"#BDBDBD",textTransform:"uppercase",marginTop:7,fontWeight:700,letterSpacing:"0.16em"}}>Central de Pedidos</div>
           </div>
           <div style={{width:1,height:38,background:"#2B2B2B"}}/>
           <div style={{display:"flex",alignItems:"center",gap:7}}>
