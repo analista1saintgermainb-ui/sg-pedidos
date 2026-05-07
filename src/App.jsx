@@ -65,6 +65,12 @@ async function createUser(email, password, token) {
   const r = await fetch("/api/create-user", {method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`},body:JSON.stringify({email,password})})
   const d = await r.json(); if (!r.ok) throw new Error(d.msg||d.message||"Erro ao criar usuário"); return d
 }
+async function totalExpressRequest(payload, token) {
+  const r = await fetch("/api/total-express", {method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`},body:JSON.stringify(payload)})
+  const d = await r.json().catch(()=>({}))
+  if (!r.ok) throw new Error(d.error||d.message||d.descricao||"Erro Total Express")
+  return d
+}
 async function dbLoadFast(token, onPartial) {
   let all = [], from = 0, step = 1000
   while (true) {
@@ -525,6 +531,40 @@ function getTranspLink(transportadora) {
   // Fallback: busca no Google pela transportadora
   return `https://www.google.com/search?q=${encodeURIComponent(transportadora + " rastreio contato")}`
 }
+function isTotalExpress(transportadora) {
+  const t = norm(transportadora)
+  return t.includes("total") || t.includes("tex")
+}
+function latestTotalTracking(item) {
+  const events = Array.isArray(item?.tracking) ? item.tracking : []
+  return events
+    .filter(e => e?.data || e?.descricao)
+    .sort((a,b)=>String(b.data||"").localeCompare(String(a.data||"")))[0] || null
+}
+function totalExpressPayloadForOrder(r) {
+  if (r?.rastreio) return { awbs:[r.rastreio] }
+  if (r?.nuvem) return { pedidos:[String(r.nuvem)] }
+  if (r?.nf) return { notasFiscais:[String(r.nf)] }
+  return null
+}
+function totalExpressUpdateFromItem(item) {
+  const last = latestTotalTracking(item)
+  const status = last?.descricao || ""
+  const prazo = item?.previsaoEntregaAtualizada || item?.previsaoEntrega || ""
+  const proof = item?.dadosRecebedor?.comprovanteEntrega?.urlArquivo || ""
+  const urgencia = calcUrg(prazo, status)
+  return {
+    rastreio: item?.awb || item?.codigoBarra || "",
+    status,
+    prazo,
+    ultimaMov: last?.data || "",
+    motivo: calcMotivo(status),
+    urgencia,
+    acionar: calcAcionar(urgencia, status),
+    totalExpressLastSync: new Date().toISOString(),
+    comprovanteEntregaUrl: proof,
+  }
+}
 
 
 const PROBLEMA_CONFIG = {
@@ -765,12 +805,12 @@ function buildMailto(r, nomeAtendente) {
 }
 
 // AcoesRapidas: botões de ação com feedback visual de loading
-function AcoesRapidas({r, perms, nomeAtendente, onNotificar, onAcionarTransp, onReenvio, onResolver, onDevolver}) {
+function AcoesRapidas({r, perms, nomeAtendente, onNotificar, onAcionarTransp, onReenvio, onResolver, onDevolver, onTotalTracking, onTotalTicket}) {
   const [loading, setLoading] = useState(null)
-  const tipo      = classificarProblema(r)
   const transpUrl = getTranspLink(r.transportadora)
   const mailtoUrl = buildMailto(r, nomeAtendente)
   const temEmail  = !!mailtoUrl
+  const isTotal   = isTotalExpress(r.transportadora)
 
   const act = (key, fn) => async () => {
     setLoading(key); try { await fn() } finally { setLoading(null) }
@@ -778,57 +818,65 @@ function AcoesRapidas({r, perms, nomeAtendente, onNotificar, onAcionarTransp, on
 
   if (!perms?.canOperate) return null
 
+  const btnBase = {
+    minHeight:42,
+    borderRadius:6,
+    padding:"10px 12px",
+    fontSize:11,
+    fontWeight:800,
+    cursor:loading?"wait":"pointer",
+    letterSpacing:"0.01em",
+    transition:"all .2s",
+    display:"flex",
+    alignItems:"center",
+    justifyContent:"center",
+    gap:6,
+    whiteSpace:"nowrap",
+  }
   const btn = (key, label, style={}, onClick=null) => (
     <button key={key}
-      onClick={onClick || act(key, {notif:onNotificar,transp:onAcionarTransp,reenv:onReenvio,resol:onResolver,dev:onDevolver}[key])}
+      onClick={onClick || act(key, {notif:onNotificar,transp:onAcionarTransp,resol:onResolver,dev:onDevolver}[key])}
       disabled={loading!==null}
-      style={{flex:1,border:"none",borderRadius:8,padding:"9px 6px",fontSize:10,fontWeight:600,cursor:loading?"wait":"pointer",letterSpacing:"0.03em",transition:"all .2s",opacity:loading!==null&&loading!==key?0.5:1,...style}}>
-      {loading===key?"⏳":label}
+      style={{...btnBase,opacity:loading!==null&&loading!==key?0.45:1,...style}}>
+      {loading===key?"Aguarde...":label}
     </button>
   )
 
   return (
-    <div style={{marginBottom:4}}>
-      <div style={{fontSize:8,color:C.text3,textTransform:"uppercase",letterSpacing:"0.12em",fontWeight:500,marginBottom:7}}>Ações rápidas</div>
-      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-        {/* Botão Email: abre Gmail com assunto + corpo preenchidos */}
+    <div style={{border:`1px solid ${C.border}`,background:C.cream,borderRadius:8,padding:10,marginBottom:10}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:8}}>
+        <div style={{fontSize:8,color:C.text3,textTransform:"uppercase",letterSpacing:"0.14em",fontWeight:800}}>Acoes do atendimento</div>
+        <div style={{fontSize:10,color:C.text4,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+          {temEmail?`Canal: ${r.email}`:"Canal: Zendesk / email pendente"} · {r.transportadora||"Transportadora nao informada"}
+        </div>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:8}}>
         {temEmail ? (
           <a href={mailtoUrl}
             onClick={()=>{ onNotificar() }}
             target="_blank" rel="noopener noreferrer"
-            style={{flex:1,background:C.brand,color:C.white,borderRadius:8,padding:"9px 6px",fontSize:10,fontWeight:600,cursor:"pointer",letterSpacing:"0.03em",textDecoration:"none",display:"flex",alignItems:"center",justifyContent:"center",gap:4}}>
-            📧 Notificar por Email ↗
+            style={{...btnBase,background:C.brand,color:C.white,border:"none",textDecoration:"none"}}>
+            Notificar por Email
           </a>
         ) : (
           <button
             onClick={()=>{ onNotificar(); }}
             disabled={loading!==null}
             title="Adicione o email do cliente no arquivo para habilitar envio direto"
-            style={{flex:1,background:C.brand,color:C.white,borderRadius:8,padding:"9px 6px",fontSize:10,fontWeight:600,cursor:"pointer",letterSpacing:"0.03em",opacity:0.6}}>
-            📧 Notificar Cliente
+            style={{...btnBase,background:C.brand,color:C.white,border:"none",opacity:0.72}}>
+            Notificar por Email
           </button>
         )}
-        {/* Botão transportadora */}
-        <button
-          disabled={loading!==null}
-          onClick={async()=>{
-            setLoading("transp")
-            try { await onAcionarTransp() } finally { setLoading(null) }
-            if (transpUrl) window.open(transpUrl, "_blank", "noopener")
-          }}
-          title={transpUrl||""}
-          style={{flex:1,border:`1px solid ${C.blueBorder}`,borderRadius:8,padding:"9px 6px",fontSize:10,fontWeight:600,cursor:loading?"wait":"pointer",letterSpacing:"0.03em",transition:"all .2s",opacity:loading!==null&&loading!=="transp"?0.5:1,background:C.blueSoft,color:C.blue}}>
-          {loading==="transp"?"⏳":`🚛 Acionar ${r.transportadora||"Transportadora"} ↗`}
-        </button>
-        {tipo==="DEVOLUCAO"&&btn("reenv","📦 Solicitar Reenvio",{background:C.amberSoft,color:C.amber,border:`1px solid ${C.amberBorder}`})}
-        {r.atendimento!=="Resolvido"&&btn("resol","✓ Marcar Resolvido",{background:C.gold,color:C.white})}
-        {btn("dev","← Devolver",{background:C.white,color:C.text2,border:`1px solid ${C.border}`})}
+        {isTotal
+          ? btn("texTicket","Acionar Total Express",{background:C.blueSoft,color:C.blue,border:`1px solid ${C.blueBorder}`},act("texTicket", onTotalTicket))
+          : btn("transp",`Acionar ${r.transportadora||"Transportadora"}`,{background:C.blueSoft,color:C.blue,border:`1px solid ${C.blueBorder}`},async()=>{
+              setLoading("transp")
+              try { await onAcionarTransp() } finally { setLoading(null) }
+              if (transpUrl) window.open(transpUrl, "_blank", "noopener")
+            })}
+        {r.atendimento!=="Resolvido"&&btn("resol","Marcar como resolvido",{background:C.green,color:C.white,border:`1px solid ${C.green}`})}
+        {btn("dev","Devolver",{background:C.white,color:C.text2,border:`1px solid ${C.borderDark}`})}
       </div>
-      {temEmail
-        ? <div style={{fontSize:9,color:C.text4,marginTop:4}}>↗ {r.email}</div>
-        : <div style={{fontSize:9,color:C.amber,marginTop:4}}>⚠ Email do cliente não encontrado no arquivo</div>
-      }
-      {transpUrl&&<div style={{fontSize:9,color:C.text4,marginTop:2}}>↗ {transpUrl}</div>}
     </div>
   )
 }
@@ -1229,7 +1277,7 @@ export default function App() {
   const [selSup,setSelSup]=useState(null)
   const [supView,setSupView]=useState('lista') // 'lista' | 'kanban'
   const [selSupIds,setSelSupIds]=useState(new Set())
-  const [openTpl,setOpenTpl]=useState(false); const [openHist,setOpenHist]=useState(false)
+  const [openHist,setOpenHist]=useState(false)
   const [aSrch,setASrch]=useState("")
   const [aPage,setAPage]=useState(1)
   const [syncStatus,setSyncStatus]=useState("idle")
@@ -1328,7 +1376,7 @@ export default function App() {
   const detailPanelRef = useRef(null)
   const queueRef = useRef(null)
   useEffect(()=>{
-    setOpenTpl(false); setOpenHist(false)
+    setOpenHist(false)
     if (detailPanelRef.current) detailPanelRef.current.scrollTop = 0
     // Rola a fila para que o item selecionado fique no topo
     if (selSup && queueRef.current) {
@@ -1431,6 +1479,55 @@ export default function App() {
     addToast("Pedido marcado em Devolucao")
   }
   const handleReturnLog = id => {if (!perms?.canOperate)return;upd(id,{enviadoSuporte:false,sentAt:null},{acao:"Devolvido à Logística",usuario:nomeAtendente});setSelSup(null)}
+  const handleTotalExpressTracking = async id => {
+    if (!perms?.canOperate) return
+    const atual = rows.find(r=>r.id===id)
+    if (!atual || !isTotalExpress(atual.transportadora)) {
+      addToast("Acao disponivel apenas para pedidos Total Express","warn")
+      return
+    }
+    const payload = totalExpressPayloadForOrder(atual)
+    if (!payload) {
+      addToast("Informe rastreio, pedido ou NF para consultar Total Express","error")
+      return
+    }
+    const data = await totalExpressRequest({action:"tracking",transportadora:atual.transportadora,...payload,comprovanteEntrega:true}, token)
+    const item = data.items?.[0]
+    if (!item) {
+      addToast("Total Express nao retornou encomenda para este pedido","warn")
+      return
+    }
+    const ch = totalExpressUpdateFromItem(item)
+    Object.keys(ch).forEach(k=>{ if (ch[k]==="" || ch[k]===undefined || ch[k]===null) delete ch[k] })
+    upd(id,ch,{acao:`Total Express atualizado: ${ch.status||"sem nova ocorrencia"}`,usuario:nomeAtendente})
+    addToast("Status Total Express atualizado")
+  }
+  const handleTotalExpressTicket = async id => {
+    if (!perms?.canOperate) return
+    const atual = rows.find(r=>r.id===id)
+    if (!atual || !isTotalExpress(atual.transportadora)) {
+      addToast("Ticket Total Express apenas para pedidos Total Express","warn")
+      return
+    }
+    const origemId = atual.rastreio || atual.nuvem || atual.nf
+    if (!origemId) {
+      addToast("Informe rastreio, pedido ou NF antes de abrir ticket","error")
+      return
+    }
+    const descricao = [
+      `Pedido SG/Nuvem: ${atual.nuvem||"-"}`,
+      `Cliente: ${atual.destinatario||"-"}`,
+      `AWB/Rastreio: ${atual.rastreio||"-"}`,
+      `NF: ${atual.nf||"-"}`,
+      `Status atual: ${atual.status||"-"}`,
+      `Motivo: ${atual.motivoDevolucao||atual.motivo||"Acionamento logistico"}`,
+      `Responsavel interno: ${nomeAtendente||"-"}`,
+    ].join("\n")
+    const data = await totalExpressRequest({action:"ticket",transportadora:atual.transportadora,origem:"encomenda",origemId,descricao,casoCritico:atual.urgencia==="Alta"}, token)
+    const ticketId = data?.data?.data?.id || data?.data?.id || data?.id || ""
+    upd(id,{chamado:ticketId?`Total #${ticketId}`:(atual.chamado||"Ticket Total aberto"),totalExpressTicketId:ticketId},{acao:`Ticket Total Express aberto${ticketId?`: ${ticketId}`:""}`,usuario:nomeAtendente})
+    addToast(ticketId?`Ticket Total #${ticketId} aberto`:"Ticket Total Express aberto")
+  }
   const handleClearAll  = () => {
     if (!perms?.canClear) return
     if (!window.confirm("Isso removerá TODOS os pedidos da base de dados. Esta ação não pode ser desfeita. Confirmar?")) return
@@ -1979,8 +2076,7 @@ export default function App() {
                   nomeAtendente={nomeAtendente}
                   onNotificar={()=>{
                     upd(detail.id,{atendimento:detail.atendimento==="Aberto"?"Em andamento":detail.atendimento},{acao:"Cliente notificado",usuario:nomeAtendente})
-                    setOpenTpl(true)
-                    addToast("📧 Template aberto para envio ao cliente")
+                    addToast("Notificacao registrada")
                   }}
                   onAcionarTransp={()=>{
                     upd(detail.id,{atendimento:detail.atendimento==="Aberto"?"Em andamento":detail.atendimento},{acao:`Transportadora acionada: ${detail.transportadora}`,usuario:nomeAtendente})
@@ -1991,19 +2087,9 @@ export default function App() {
                   }}
                   onResolver={()=>handleResolve(detail.id)}
                   onDevolver={()=>handleReturnLog(detail.id)}
+                  onTotalTracking={()=>handleTotalExpressTracking(detail.id)}
+                  onTotalTicket={()=>handleTotalExpressTicket(detail.id)}
                 />
-                {perms?.canOperate&&(
-                  <div style={{marginTop:8,border:`1px solid ${C.border}`,background:C.white,padding:10,borderRadius:6,boxShadow:shadow.sm}}>
-                    <div style={{fontSize:8,color:C.text3,textTransform:"uppercase",fontWeight:800,marginBottom:8}}>Decisao do cliente</div>
-                    <textarea value={detail.motivoDevolucao||detail.motivo||""} onChange={e=>upd(detail.id,{motivoDevolucao:e.target.value})} placeholder="Motivo da devolucao, estorno ou reenvio..." rows={2}
-                      style={{width:"100%",borderRadius:4,border:`1px solid ${C.borderDark}`,padding:"9px 10px",fontSize:11,resize:"vertical",fontFamily:"inherit",background:C.white,color:C.text1,boxSizing:"border-box",lineHeight:1.5,marginBottom:8}}/>
-                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr auto",gap:8}}>
-                      <button onClick={()=>handleMarkDevolucao(detail.id)} style={{background:detail.decisaoCliente==="Estorno / devolucao"?C.brand:C.white,border:`1px solid ${C.borderDark}`,color:detail.decisaoCliente==="Estorno / devolucao"?C.white:C.text1,borderRadius:4,padding:"9px 10px",fontSize:10,cursor:"pointer",fontWeight:800}}>Estorno / devolver produto</button>
-                      <button onClick={()=>handleCreateReenvio(detail.id)} style={{background:detail.decisaoCliente==="Reenvio"?C.brand:C.white,border:`1px solid ${C.borderDark}`,color:detail.decisaoCliente==="Reenvio"?C.white:C.text1,borderRadius:4,padding:"9px 10px",fontSize:10,cursor:"pointer",fontWeight:800}}>Reenvio</button>
-                      <button onClick={()=>handleResolve(detail.id)} style={{background:C.green,border:"none",color:C.white,borderRadius:4,padding:"9px 12px",fontSize:10,cursor:"pointer",fontWeight:800}}>Finalizar</button>
-                    </div>
-                  </div>
-                )}
               </div>
 
               {/* BLOCO 2 + 3 — CONTEÚDO ROLÁVEL */}
@@ -2011,6 +2097,25 @@ export default function App() {
 
                 {/* SugestaoSistema: sugestão automática */}
                 <SugestaoSistema r={detail}/>
+
+                {perms?.canOperate&&(
+                  <div style={{background:C.white,borderRadius:10,border:`1px solid ${C.border}`,padding:14,marginBottom:14,boxShadow:shadow.sm}}>
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,marginBottom:10}}>
+                      <div>
+                        <div style={{fontSize:8,color:C.text3,textTransform:"uppercase",letterSpacing:"0.14em",fontWeight:800,marginBottom:3}}>Decisao do cliente</div>
+                        <div style={{fontSize:11,color:C.text4}}>Registre o motivo e direcione o pedido para o fluxo correto.</div>
+                      </div>
+                      {detail.decisaoCliente&&<Chip val={detail.decisaoCliente} styles={{[detail.decisaoCliente]:{bg:C.cream,color:C.text1,bd:C.borderDark}}}/>}
+                    </div>
+                    <textarea value={detail.motivoDevolucao||detail.motivo||""} onChange={e=>upd(detail.id,{motivoDevolucao:e.target.value})} placeholder="Motivo da devolucao, estorno ou reenvio..." rows={3}
+                      style={{width:"100%",borderRadius:6,border:`1px solid ${C.borderDark}`,padding:"10px 12px",fontSize:12,resize:"vertical",fontFamily:"inherit",background:C.white,color:C.text1,boxSizing:"border-box",lineHeight:1.5,marginBottom:10}}/>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr auto",gap:8}}>
+                      <button onClick={()=>handleMarkDevolucao(detail.id)} style={{background:detail.decisaoCliente==="Estorno / devolucao"?C.brand:C.white,border:`1px solid ${C.borderDark}`,color:detail.decisaoCliente==="Estorno / devolucao"?C.white:C.text1,borderRadius:6,padding:"10px 12px",fontSize:11,cursor:"pointer",fontWeight:800}}>Estorno / devolver produto</button>
+                      <button onClick={()=>handleCreateReenvio(detail.id)} style={{background:detail.decisaoCliente==="Reenvio"?C.brand:C.white,border:`1px solid ${C.borderDark}`,color:detail.decisaoCliente==="Reenvio"?C.white:C.text1,borderRadius:6,padding:"10px 12px",fontSize:11,cursor:"pointer",fontWeight:800}}>Reenvio</button>
+                      <button onClick={()=>handleResolve(detail.id)} style={{background:C.green,border:`1px solid ${C.green}`,color:C.white,borderRadius:6,padding:"10px 14px",fontSize:11,cursor:"pointer",fontWeight:800}}>Finalizar</button>
+                    </div>
+                  </div>
+                )}
 
                 {/* Grid 3 colunas: LOGÍSTICA | CLIENTE | PRAZO */}
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:14}}>
@@ -2097,29 +2202,6 @@ export default function App() {
                     </div>
                   </div>
                 )}
-
-                <div style={{height:1,background:C.border,marginBottom:14}}/>
-
-                {/* Templates */}
-                <div style={{marginBottom:10,background:C.white,borderRadius:12,border:`1px solid ${C.border}`,overflow:"hidden",boxShadow:shadow.sm}}>
-                  <button onClick={()=>setOpenTpl(v=>!v)} style={{width:"100%",padding:"13px 18px",background:openTpl?C.cream:"transparent",border:"none",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:11,fontWeight:500,color:C.text1,letterSpacing:"0.04em"}}>
-                    <span>✉ Textos prontos para atendimento</span>
-                    <span style={{fontSize:16,color:C.text4,fontWeight:300,width:24,textAlign:"center"}}>{openTpl?"−":"+"}</span>
-                  </button>
-                  {openTpl&&<div style={{padding:16,borderTop:`1px solid ${C.border}`,background:C.cream}}>
-                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-                      {[{ch:"wpp",label:"WhatsApp"},{ch:"zendesk",label:"Zendesk"}].map(({ch,label})=>(
-                        <div key={ch} style={{background:C.white,borderRadius:10,border:`1px solid ${C.border}`,overflow:"hidden",boxShadow:shadow.sm}}>
-                          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",borderBottom:`1px solid ${C.border}`,background:C.brand}}>
-                            <span style={{fontSize:10,color:C.gold,fontWeight:500,letterSpacing:"0.1em",textTransform:"uppercase"}}>{label}</span>
-                            <CopyBtn text={getTemplate(detail,ch,nomeAtendente)} label="Copiar"/>
-                          </div>
-                          <pre style={{margin:0,padding:"12px 14px",fontSize:11,color:C.text2,whiteSpace:"pre-wrap",fontFamily:"inherit",lineHeight:1.7,maxHeight:160,overflowY:"auto"}}>{getTemplate(detail,ch,nomeAtendente)}</pre>
-                        </div>
-                      ))}
-                    </div>
-                  </div>}
-                </div>
 
                 {/* Timeline de Histórico */}
                 <TimelineHistorico historico={detail.historico} isOpen={openHist} onToggle={()=>setOpenHist(v=>!v)}/>
