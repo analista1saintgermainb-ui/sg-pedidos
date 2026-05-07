@@ -65,6 +65,12 @@ async function createUser(email, password, token) {
   const r = await fetch("/api/create-user", {method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`},body:JSON.stringify({email,password})})
   const d = await r.json(); if (!r.ok) throw new Error(d.msg||d.message||"Erro ao criar usuário"); return d
 }
+async function totalExpressRequest(payload, token) {
+  const r = await fetch("/api/total-express", {method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`},body:JSON.stringify(payload)})
+  const d = await r.json().catch(()=>({}))
+  if (!r.ok) throw new Error(d.error||d.message||d.descricao||"Erro Total Express")
+  return d
+}
 async function dbLoadFast(token, onPartial) {
   let all = [], from = 0, step = 1000
   while (true) {
@@ -525,6 +531,40 @@ function getTranspLink(transportadora) {
   // Fallback: busca no Google pela transportadora
   return `https://www.google.com/search?q=${encodeURIComponent(transportadora + " rastreio contato")}`
 }
+function isTotalExpress(transportadora) {
+  const t = norm(transportadora)
+  return t.includes("total") || t.includes("tex")
+}
+function latestTotalTracking(item) {
+  const events = Array.isArray(item?.tracking) ? item.tracking : []
+  return events
+    .filter(e => e?.data || e?.descricao)
+    .sort((a,b)=>String(b.data||"").localeCompare(String(a.data||"")))[0] || null
+}
+function totalExpressPayloadForOrder(r) {
+  if (r?.rastreio) return { awbs:[r.rastreio] }
+  if (r?.nuvem) return { pedidos:[String(r.nuvem)] }
+  if (r?.nf) return { notasFiscais:[String(r.nf)] }
+  return null
+}
+function totalExpressUpdateFromItem(item) {
+  const last = latestTotalTracking(item)
+  const status = last?.descricao || ""
+  const prazo = item?.previsaoEntregaAtualizada || item?.previsaoEntrega || ""
+  const proof = item?.dadosRecebedor?.comprovanteEntrega?.urlArquivo || ""
+  const urgencia = calcUrg(prazo, status)
+  return {
+    rastreio: item?.awb || item?.codigoBarra || "",
+    status,
+    prazo,
+    ultimaMov: last?.data || "",
+    motivo: calcMotivo(status),
+    urgencia,
+    acionar: calcAcionar(urgencia, status),
+    totalExpressLastSync: new Date().toISOString(),
+    comprovanteEntregaUrl: proof,
+  }
+}
 
 
 const PROBLEMA_CONFIG = {
@@ -765,12 +805,13 @@ function buildMailto(r, nomeAtendente) {
 }
 
 // AcoesRapidas: botões de ação com feedback visual de loading
-function AcoesRapidas({r, perms, nomeAtendente, onNotificar, onAcionarTransp, onReenvio, onResolver, onDevolver}) {
+function AcoesRapidas({r, perms, nomeAtendente, onNotificar, onAcionarTransp, onReenvio, onResolver, onDevolver, onTotalTracking, onTotalTicket}) {
   const [loading, setLoading] = useState(null)
   const tipo      = classificarProblema(r)
   const transpUrl = getTranspLink(r.transportadora)
   const mailtoUrl = buildMailto(r, nomeAtendente)
   const temEmail  = !!mailtoUrl
+  const isTotal   = isTotalExpress(r.transportadora)
 
   const act = (key, fn) => async () => {
     setLoading(key); try { await fn() } finally { setLoading(null) }
@@ -820,6 +861,8 @@ function AcoesRapidas({r, perms, nomeAtendente, onNotificar, onAcionarTransp, on
           style={{flex:1,border:`1px solid ${C.blueBorder}`,borderRadius:8,padding:"9px 6px",fontSize:10,fontWeight:600,cursor:loading?"wait":"pointer",letterSpacing:"0.03em",transition:"all .2s",opacity:loading!==null&&loading!=="transp"?0.5:1,background:C.blueSoft,color:C.blue}}>
           {loading==="transp"?"⏳":`🚛 Acionar ${r.transportadora||"Transportadora"} ↗`}
         </button>
+        {isTotal&&btn("texTrack","Atualizar Total",{background:C.blueSoft,color:C.blue,border:`1px solid ${C.blueBorder}`},act("texTrack", onTotalTracking))}
+        {isTotal&&btn("texTicket","Abrir ticket Total",{background:C.white,color:C.text1,border:`1px solid ${C.borderDark}`},act("texTicket", onTotalTicket))}
         {tipo==="DEVOLUCAO"&&btn("reenv","📦 Solicitar Reenvio",{background:C.amberSoft,color:C.amber,border:`1px solid ${C.amberBorder}`})}
         {r.atendimento!=="Resolvido"&&btn("resol","✓ Marcar Resolvido",{background:C.gold,color:C.white})}
         {btn("dev","← Devolver",{background:C.white,color:C.text2,border:`1px solid ${C.border}`})}
@@ -1431,6 +1474,55 @@ export default function App() {
     addToast("Pedido marcado em Devolucao")
   }
   const handleReturnLog = id => {if (!perms?.canOperate)return;upd(id,{enviadoSuporte:false,sentAt:null},{acao:"Devolvido à Logística",usuario:nomeAtendente});setSelSup(null)}
+  const handleTotalExpressTracking = async id => {
+    if (!perms?.canOperate) return
+    const atual = rows.find(r=>r.id===id)
+    if (!atual || !isTotalExpress(atual.transportadora)) {
+      addToast("Acao disponivel apenas para pedidos Total Express","warn")
+      return
+    }
+    const payload = totalExpressPayloadForOrder(atual)
+    if (!payload) {
+      addToast("Informe rastreio, pedido ou NF para consultar Total Express","error")
+      return
+    }
+    const data = await totalExpressRequest({action:"tracking",transportadora:atual.transportadora,...payload,comprovanteEntrega:true}, token)
+    const item = data.items?.[0]
+    if (!item) {
+      addToast("Total Express nao retornou encomenda para este pedido","warn")
+      return
+    }
+    const ch = totalExpressUpdateFromItem(item)
+    Object.keys(ch).forEach(k=>{ if (ch[k]==="" || ch[k]===undefined || ch[k]===null) delete ch[k] })
+    upd(id,ch,{acao:`Total Express atualizado: ${ch.status||"sem nova ocorrencia"}`,usuario:nomeAtendente})
+    addToast("Status Total Express atualizado")
+  }
+  const handleTotalExpressTicket = async id => {
+    if (!perms?.canOperate) return
+    const atual = rows.find(r=>r.id===id)
+    if (!atual || !isTotalExpress(atual.transportadora)) {
+      addToast("Ticket Total Express apenas para pedidos Total Express","warn")
+      return
+    }
+    const origemId = atual.rastreio || atual.nuvem || atual.nf
+    if (!origemId) {
+      addToast("Informe rastreio, pedido ou NF antes de abrir ticket","error")
+      return
+    }
+    const descricao = [
+      `Pedido SG/Nuvem: ${atual.nuvem||"-"}`,
+      `Cliente: ${atual.destinatario||"-"}`,
+      `AWB/Rastreio: ${atual.rastreio||"-"}`,
+      `NF: ${atual.nf||"-"}`,
+      `Status atual: ${atual.status||"-"}`,
+      `Motivo: ${atual.motivoDevolucao||atual.motivo||"Acionamento logistico"}`,
+      `Responsavel interno: ${nomeAtendente||"-"}`,
+    ].join("\n")
+    const data = await totalExpressRequest({action:"ticket",transportadora:atual.transportadora,origem:"encomenda",origemId,descricao,casoCritico:atual.urgencia==="Alta"}, token)
+    const ticketId = data?.data?.data?.id || data?.data?.id || data?.id || ""
+    upd(id,{chamado:ticketId?`Total #${ticketId}`:(atual.chamado||"Ticket Total aberto"),totalExpressTicketId:ticketId},{acao:`Ticket Total Express aberto${ticketId?`: ${ticketId}`:""}`,usuario:nomeAtendente})
+    addToast(ticketId?`Ticket Total #${ticketId} aberto`:"Ticket Total Express aberto")
+  }
   const handleClearAll  = () => {
     if (!perms?.canClear) return
     if (!window.confirm("Isso removerá TODOS os pedidos da base de dados. Esta ação não pode ser desfeita. Confirmar?")) return
@@ -1991,6 +2083,8 @@ export default function App() {
                   }}
                   onResolver={()=>handleResolve(detail.id)}
                   onDevolver={()=>handleReturnLog(detail.id)}
+                  onTotalTracking={()=>handleTotalExpressTracking(detail.id)}
+                  onTotalTicket={()=>handleTotalExpressTicket(detail.id)}
                 />
                 {perms?.canOperate&&(
                   <div style={{marginTop:8,border:`1px solid ${C.border}`,background:C.white,padding:10,borderRadius:6,boxShadow:shadow.sm}}>
