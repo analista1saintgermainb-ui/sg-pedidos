@@ -643,6 +643,22 @@ function CopyBtn({text,label}) {
   </button>
 }
 
+function NavIcon({type, active}) {
+  const stroke = active ? C.brand : C.text2
+  const common = {width:22,height:22,display:"block"}
+  const props = {stroke, strokeWidth:1.8, fill:"none", strokeLinecap:"round", strokeLinejoin:"round"}
+  const icons = {
+    dashboard:<svg style={common} viewBox="0 0 24 24"><path {...props} d="M4 13h6V4H4v9Zm10 7h6V4h-6v16ZM4 20h6v-3H4v3Z"/></svg>,
+    logistica:<svg style={common} viewBox="0 0 24 24"><path {...props} d="M3 7h12v10H3zM15 10h3l3 3v4h-6zM7 20a2 2 0 1 0 0-4 2 2 0 0 0 0 4Zm10 0a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"/></svg>,
+    suporte:<svg style={common} viewBox="0 0 24 24"><path {...props} d="M4 12a8 8 0 0 1 16 0v4a2 2 0 0 1-2 2h-2v-6h4M4 16a2 2 0 0 0 2 2h2v-6H4m8 8h2"/></svg>,
+    devolucao:<svg style={common} viewBox="0 0 24 24"><path {...props} d="M9 7 5 11l4 4M5 11h9a5 5 0 0 1 0 10h-2"/></svg>,
+    reenvio:<svg style={common} viewBox="0 0 24 24"><path {...props} d="M4 16v4h4M20 8V4h-4M5 19 19 5M8 5h5M16 19h-5"/></svg>,
+    arquivados:<svg style={common} viewBox="0 0 24 24"><path {...props} d="M4 5h16v14H4zM8 12l3 3 5-6"/></svg>,
+    usuarios:<svg style={common} viewBox="0 0 24 24"><path {...props} d="M16 11a4 4 0 1 0-8 0M4 21a8 8 0 0 1 16 0M18 8h3M19.5 6.5v3"/></svg>,
+  }
+  return icons[type] || icons.dashboard
+}
+
 function SortIcon({col,sortCol,sortDir}) {
   if (sortCol!==col) return <span style={{color:C.text4,fontSize:9,marginLeft:4}}>⇅</span>
   return <span style={{color:C.gold,fontSize:9,marginLeft:4}}>{sortDir==="asc"?"↑":"↓"}</span>
@@ -676,24 +692,23 @@ function HeaderProblema({r, onNotificou}) {
   ].filter(Boolean)
 
   return (
-    <div style={{background:critico?`${C.red}10`:`${C.amber}10`,borderRadius:12,border:`1px solid ${cfg.bd}`,padding:"12px 14px",marginBottom:12}}>
-      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
-        <span style={{fontSize:20,lineHeight:1}}>{cfg.icone}</span>
-        <span style={{background:cfg.bg,color:cfg.color,border:`1px solid ${cfg.bd}`,borderRadius:20,padding:"3px 12px",fontSize:10,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase"}}>{cfg.label}</span>
+    <div style={{background:C.white,borderRadius:6,border:`1px solid ${cfg.bd}`,borderLeft:`4px solid ${cfg.color}`,padding:"10px 12px",marginBottom:10,boxShadow:shadow.sm}}>
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+        <span style={{background:cfg.bg,color:cfg.color,border:`1px solid ${cfg.bd}`,borderRadius:4,padding:"3px 8px",fontSize:10,fontWeight:800,textTransform:"uppercase"}}>{cfg.label}</span>
         <div style={{flex:1}}/>
         <Chip val={r.urgencia} styles={urgStyles}/>
         <Chip val={r.atendimento} styles={atendStyles}/>
       </div>
       <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
         {metricas.map(m=>(
-          <div key={m.lbl} style={{background:"rgba(255,255,255,0.75)",borderRadius:8,padding:"6px 10px",flex:1,minWidth:80}}>
+          <div key={m.lbl} style={{background:C.cream,borderRadius:4,padding:"6px 9px",flex:1,minWidth:80,border:`1px solid ${C.border}`}}>
             <div style={{fontSize:8,color:C.text3,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:2}}>{m.lbl}</div>
             <div style={{fontSize:12,fontWeight:600,color:m.cor||C.text1}}>{m.val}</div>
           </div>
         ))}
       </div>
       {r.alertaStatus&&(
-        <div style={{marginTop:10,background:"rgba(255,255,255,0.85)",borderRadius:8,padding:"9px 12px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
+        <div style={{marginTop:10,background:C.amberSoft,borderRadius:4,padding:"9px 12px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,border:`1px solid ${C.amberBorder}`}}>
           <div style={{fontSize:11,color:C.amber,fontWeight:600}}>⚠ {r.alertaStatus}</div>
           <button onClick={onNotificou} style={{background:C.amber,border:"none",color:C.white,borderRadius:6,padding:"5px 12px",fontSize:10,cursor:"pointer",fontWeight:600,whiteSpace:"nowrap"}}>✓ Notifiquei</button>
         </div>
@@ -1792,12 +1807,12 @@ export default function App() {
   const PERFLABEL={admin:"Admin",logistica:"Logística",suporte:"Suporte",leitura:"Leitura"}
   const syncDot  = syncStatus==="error"?C.red:syncStatus==="saving"?C.gold:syncStatus==="saved"?"#27ae60":"#555"
   const syncText = syncStatus==="loading"?"Carregando...":syncStatus==="saving"?"Salvando...":syncStatus==="saved"?"Sincronizado ✓":syncStatus==="error"?"Erro":lastSync?`Sync em ${countdown}s`:""
-  const TABS=[{key:"dashboard",label:"Dashboard",icon:"◆",badge:null},{key:"logistica",label:"Logística",icon:"⇄",badge:st.acionar>0?st.acionar:null},{key:"suporte",label:"Suporte",icon:"●",badge:ss.abertos>0?ss.abertos:null},{key:"devolucao",label:"Devolução",icon:"↩",badge:devStats.total>0?devStats.total:null},{key:"reenvio",label:"Reenvio",icon:"↗",badge:reenvStats.pendentes>0?reenvStats.pendentes:null},{key:"arquivados",label:"Finalizados",icon:"✓",badge:arch>0?arch:null},{key:"usuarios",label:"Usuários",icon:"◦",badge:null}].filter(t=>perms?.tabs.includes(t.key))
+  const TABS=[{key:"dashboard",label:"Dashboard",badge:null},{key:"logistica",label:"Logística",badge:st.acionar>0?st.acionar:null},{key:"suporte",label:"Suporte",badge:ss.abertos>0?ss.abertos:null},{key:"devolucao",label:"Devolução",badge:devStats.total>0?devStats.total:null},{key:"reenvio",label:"Reenvio",badge:reenvStats.pendentes>0?reenvStats.pendentes:null},{key:"arquivados",label:"Finalizados",badge:arch>0?arch:null},{key:"usuarios",label:"Usuários",badge:null}].filter(t=>perms?.tabs.includes(t.key))
   const TH  = {padding:`${compact?8:11}px 14px`,textAlign:"left",color:C.gold,fontWeight:400,fontSize:9,letterSpacing:"0.14em",textTransform:"uppercase",borderBottom:`1px solid #2A2A2A`,whiteSpace:"nowrap",background:C.brand,position:"sticky",top:0,zIndex:5,cursor:"pointer"}
   const THF = {...TH,cursor:"default"}
 
   return (
-    <div style={{fontFamily:"'Inter',sans-serif",minHeight:"100vh",background:C.cream,color:C.text1,transition:"background .3s",paddingLeft:!showImp?(navOpen?216:68):0}}>
+    <div style={{fontFamily:"'Inter',sans-serif",minHeight:"100vh",background:C.cream,color:C.text1,transition:"background .3s",paddingLeft:!showImp?(navOpen?254:52):0}}>
       <style>{getGlobalStyle()}</style>
       <Toast toasts={toasts}/>
 
@@ -1854,15 +1869,17 @@ export default function App() {
 
       {/* ── NAV ── */}
       {!showImp&&(
-        <div style={{position:"fixed",left:0,top:0,bottom:0,width:navOpen?216:68,background:C.brand,borderRight:`1px solid ${C.borderDark}`,zIndex:50,display:"flex",flexDirection:"column",transition:"width .2s",boxShadow:shadow.lg}}>
-          <button onClick={()=>setNavOpen(v=>!v)} title={navOpen?"Recolher menu":"Expandir menu"} style={{height:64,background:"transparent",border:"none",borderBottom:"1px solid #252525",color:C.white,cursor:"pointer",fontSize:18,fontWeight:800}}>{navOpen?"×":"☰"}</button>
-          <div style={{padding:"10px 8px",display:"flex",flexDirection:"column",gap:6}}>
+        <div style={{position:"fixed",left:0,top:0,bottom:0,width:navOpen?254:52,background:C.white,borderRight:`1px solid ${C.border}`,zIndex:50,display:"flex",flexDirection:"column",transition:"width .2s",boxShadow:shadow.sm}}>
+          <button onClick={()=>setNavOpen(v=>!v)} title={navOpen?"Recolher menu":"Expandir menu"} style={{height:54,background:"transparent",border:"none",borderBottom:`1px solid ${C.border}`,color:C.text2,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <svg width="22" height="22" viewBox="0 0 24 24"><path d={navOpen?"M6 6l12 12M18 6 6 18":"M4 7h16M4 12h16M4 17h16"} stroke="currentColor" strokeWidth="1.8" fill="none" strokeLinecap="round"/></svg>
+          </button>
+          <div style={{padding:navOpen?"10px 10px":"10px 5px",display:"flex",flexDirection:"column",gap:4}}>
           {TABS.map(t=>(
             <button key={t.key} onClick={()=>{setTab(t.key);if(t.key!=="suporte")setSelSup(null)}} title={t.label}
-              style={{background:tab===t.key?C.white:"transparent",border:"none",color:tab===t.key?C.brand:"#D6D6D6",padding:navOpen?"12px 12px":"12px 0",cursor:"pointer",fontSize:11,textTransform:"uppercase",fontWeight:800,display:"flex",alignItems:"center",justifyContent:navOpen?"flex-start":"center",gap:10,transition:"all .2s",whiteSpace:"nowrap",borderRadius:4,position:"relative"}}>
-              <span style={{width:24,textAlign:"center",fontSize:15}}>{t.icon}</span>
+              style={{background:tab===t.key?C.creamDark:"transparent",border:"none",color:tab===t.key?C.text1:C.text2,padding:navOpen?"10px 12px":"10px 0",cursor:"pointer",fontSize:15,fontWeight:600,display:"flex",alignItems:"center",justifyContent:navOpen?"flex-start":"center",gap:12,transition:"all .2s",whiteSpace:"nowrap",borderRadius:7,position:"relative"}}>
+              <span style={{width:24,display:"flex",alignItems:"center",justifyContent:"center"}}><NavIcon type={t.key} active={tab===t.key}/></span>
               {navOpen&&<span>{t.label}</span>}
-              {t.badge!=null&&<span style={{marginLeft:navOpen?"auto":0,position:navOpen?"static":"absolute",top:5,right:5,background:tab===t.key?C.brand:C.red,color:C.white,borderRadius:3,padding:"1px 6px",fontSize:9,fontWeight:800}}>{t.badge}</span>}
+              {t.badge!=null&&<span style={{marginLeft:navOpen?"auto":0,position:navOpen?"static":"absolute",top:4,right:3,background:C.red,color:C.white,borderRadius:6,padding:"1px 6px",fontSize:9,fontWeight:800}}>{t.badge}</span>}
             </button>
           ))}
           </div>
@@ -2212,10 +2229,10 @@ export default function App() {
             <div ref={detailPanelRef} style={{flex:1,display:"flex",flexDirection:"column",overflowY:"auto",background:C.cream,height:"100%"}}>
 
               {/* BLOCO 1 — TOPO STICKY: título + HeaderProblema + AcoesRapidas */}
-              <div style={{background:C.white,padding:"16px 22px 14px",borderBottom:`1px solid ${C.border}`,position:"sticky",top:0,zIndex:5,boxShadow:shadow.sm}}>
+              <div style={{background:C.white,padding:"12px 18px",borderBottom:`1px solid ${C.border}`,position:"sticky",top:0,zIndex:5,boxShadow:shadow.sm}}>
                 <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:10}}>
                   <div>
-                    <div style={{fontSize:9,color:C.gold,letterSpacing:"0.16em",textTransform:"uppercase",marginBottom:4}}>Pedido em atendimento</div>
+                    <div style={{fontSize:9,color:C.text3,textTransform:"uppercase",marginBottom:4,fontWeight:800}}>Pedido em atendimento</div>
                     <div style={{fontSize:18,fontWeight:800,color:C.text1,marginBottom:2}}>{detail.destinatario}</div>
                     <div style={{fontSize:11,color:C.text3}}>#{detail.nuvem} · {detail.transportadora}</div>
                   </div>
@@ -2249,7 +2266,7 @@ export default function App() {
                   onDevolver={()=>handleReturnLog(detail.id)}
                 />
                 {perms?.canOperate&&(
-                  <div style={{marginTop:10,border:`1px solid ${C.border}`,background:C.cream,padding:10,borderRadius:4}}>
+                  <div style={{marginTop:8,border:`1px solid ${C.border}`,background:C.white,padding:10,borderRadius:6,boxShadow:shadow.sm}}>
                     <div style={{fontSize:8,color:C.text3,textTransform:"uppercase",fontWeight:800,marginBottom:8}}>Decisao do cliente</div>
                     <textarea value={detail.motivoDevolucao||detail.motivo||""} onChange={e=>upd(detail.id,{motivoDevolucao:e.target.value})} placeholder="Motivo da devolucao, estorno ou reenvio..." rows={2}
                       style={{width:"100%",borderRadius:4,border:`1px solid ${C.borderDark}`,padding:"9px 10px",fontSize:11,resize:"vertical",fontFamily:"inherit",background:C.white,color:C.text1,boxSizing:"border-box",lineHeight:1.5,marginBottom:8}}/>
