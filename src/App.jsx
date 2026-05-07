@@ -912,83 +912,6 @@ function LoginScreen({onLogin}) {
   )
 }
 
-function BoxlinkSettings({addToast}) {
-  const [tok, setTok] = useState(getBoxlinkToken)
-  const [editing, setEditing] = useState(!getBoxlinkToken())
-  const [testing, setTesting] = useState(false)
-  const [draft, setDraft] = useState(getBoxlinkToken)
-
-  const save = () => {
-    setBoxlinkToken(draft); setTok(draft); setEditing(false)
-    addToast("Token Boxlink salvo! Sync iniciará em instantes.")
-    window.location.reload() // reload to trigger sync useEffect with new token
-  }
-
-  const test = async () => {
-    setTesting(true)
-    try {
-      const now = new Date(), from = new Date(now-24*3600000)
-      const fmt = d=>d.toISOString().slice(0,19)
-      const r = await fetch(`${BOXLINK_API}/rastreamento/ultima-ocorrencia?dataHoraInicio=${fmt(from)}&dataHoraFim=${fmt(now)}&page=0&size=1`,
-        { headers:{ Authorization:`Bearer ${draft}` } })
-      if (r.ok) { addToast("✓ Conexão Boxlink OK!") }
-      else { const t=await r.text(); addToast(`Erro ${r.status}: ${t}`,"error") }
-    } catch(e) {
-      if (e.message.includes("CORS")||e.message.includes("fetch")) addToast("⚠ CORS bloqueado — teste no browser após deploy","warn",6000)
-      else addToast("Erro: "+e.message,"error")
-    }
-    setTesting(false)
-  }
-
-  return (
-    <div style={{background:C.white,borderRadius:14,border:`1px solid ${C.border}`,padding:24,marginBottom:24,boxShadow:shadow.sm}}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
-        <div>
-          <div style={{fontSize:9,letterSpacing:"0.14em",textTransform:"uppercase",color:C.gold,marginBottom:4,fontWeight:500}}>Integração</div>
-          <div style={{fontSize:14,fontWeight:500,color:C.text1}}>Boxlink API</div>
-        </div>
-        {tok&&!editing&&(
-          <div style={{display:"flex",alignItems:"center",gap:8}}>
-            <span style={{background:C.greenSoft,color:C.green,border:`1px solid ${C.greenBorder}`,borderRadius:20,padding:"3px 12px",fontSize:11,fontWeight:600}}>✓ Configurado</span>
-            <button onClick={()=>setEditing(true)} style={{background:C.cream,border:`1px solid ${C.border}`,color:C.text2,borderRadius:7,padding:"5px 12px",fontSize:11,cursor:"pointer"}}>Alterar</button>
-          </div>
-        )}
-      </div>
-      {(editing||!tok)&&(
-        <div>
-          <div style={{fontSize:11,color:C.text3,marginBottom:10,lineHeight:1.6}}>
-            Cole o Bearer Token gerado no módulo de matriz da Boxlink.<br/>
-            O sistema sincronizará pedidos automaticamente a cada <strong>15 minutos</strong>.
-          </div>
-          <div style={{marginBottom:12}}>
-            <label style={{fontSize:9,letterSpacing:"0.12em",textTransform:"uppercase",color:C.text3,fontWeight:500,display:"block",marginBottom:6}}>Bearer Token</label>
-            <input type="password" value={draft} onChange={e=>setDraft(e.target.value)}
-              placeholder="eyJhbGci..."
-              style={{...getINP(),width:"100%",boxSizing:"border-box",fontFamily:"monospace",fontSize:11}}/>
-          </div>
-          <div style={{display:"flex",gap:8}}>
-            <button onClick={save} disabled={!draft.trim()} style={{background:draft.trim()?C.brand:"#ccc",border:"none",color:C.white,borderRadius:8,padding:"9px 20px",fontSize:11,fontWeight:500,cursor:draft.trim()?"pointer":"not-allowed",letterSpacing:"0.08em"}}>
-              Salvar token
-            </button>
-            <button onClick={test} disabled={!draft.trim()||testing} style={{background:C.blueSoft,border:`1px solid ${C.blueBorder}`,color:C.blue,borderRadius:8,padding:"9px 20px",fontSize:11,fontWeight:500,cursor:"pointer"}}>
-              {testing?"Testando...":"Testar conexão"}
-            </button>
-            {tok&&editing&&<button onClick={()=>setEditing(false)} style={{background:C.cream,border:`1px solid ${C.border}`,color:C.text2,borderRadius:8,padding:"9px 16px",fontSize:11,cursor:"pointer"}}>Cancelar</button>}
-          </div>
-          {tok&&<div style={{marginTop:10,fontSize:10,color:C.text4}}>Token atual: {tok.slice(0,20)}...</div>}
-        </div>
-      )}
-      {tok&&!editing&&(
-        <div style={{display:"flex",gap:24,fontSize:11,color:C.text3}}>
-          <span>Sync automático: <strong style={{color:C.text1}}>a cada 15 min</strong></span>
-          <span>Janela: <strong style={{color:C.text1}}>últimos 60 dias</strong></span>
-          <button onClick={()=>{setBoxlinkToken("");setTok("");setDraft("");setEditing(true);addToast("Token removido","warn")}} style={{background:"transparent",border:"none",color:C.red,fontSize:11,cursor:"pointer",marginLeft:"auto",textDecoration:"underline"}}>Remover token</button>
-        </div>
-      )}
-    </div>
-  )
-}
-
 // ─── Painel de Usuários ───────────────────────────────────────
 function UsuariosPanel({token,addToast}) {
   const [usuarios,setUsuarios]=useState([])
@@ -1024,8 +947,6 @@ function UsuariosPanel({token,addToast}) {
         <div style={{fontSize:22,fontWeight:800,color:C.text1}}>Gestão de Usuários</div>
       </div>
 
-      {/* ── Boxlink Integration Settings ── */}
-      <BoxlinkSettings addToast={addToast}/>
       <div style={{background:C.white,borderRadius:14,border:`1px solid ${C.border}`,padding:28,marginBottom:24,boxShadow:shadow.sm}}>
         <div style={{fontSize:9,letterSpacing:"0.14em",textTransform:"uppercase",color:C.text3,marginBottom:20,fontWeight:500}}>Adicionar usuário</div>
         <form onSubmit={handleCreate}>
@@ -1136,121 +1057,6 @@ function KanbanSuporteView({rows, onSelect, selSup, perms, upd, nomeAtendente}) 
       ))}
     </div>
   )
-}
-
-
-// ─── Boxlink API Integration ──────────────────────────────────
-const BOXLINK_API   = "https://api.boxlink.com.br"
-const BOXLINK_TOKEN_KEY = "sg_boxlink_token"
-const BOXLINK_SYNC_INTERVAL = 15 * 60 * 1000 // 15 minutos
-const BOXLINK_SYNC_DAYS = 7
-
-function getBoxlinkToken() { return localStorage.getItem(BOXLINK_TOKEN_KEY)||"" }
-function setBoxlinkToken(t) { localStorage.setItem(BOXLINK_TOKEN_KEY, t) }
-
-// Mapeia resposta da Boxlink para o formato interno do sistema
-function mapBoxlinkRow(item, i) {
-  const status     = (item.situacao||item.status||"").toUpperCase()
-  const prazoRaw   = item.prazoLogistico||item.prazoComercial||""
-  const ultimaMov  = item.dataUltimaOcorrencia||item.dataUltimaMov||""
-  const spRaw      = item.statusPrazo||""
-  const spVal      = parseStatusPrazo(spRaw)
-  const dt         = parsePrazo(prazoRaw)
-  const entregue   = isEntregue(status)
-  const dtEntrega  = entregue&&ultimaMov ? parsePrazo(ultimaMov) : null
-  const dtE = dtEntrega ? new Date(dtEntrega.getFullYear(),dtEntrega.getMonth(),dtEntrega.getDate()) : null
-  const dtP = dt         ? new Date(dt.getFullYear(),       dt.getMonth(),       dt.getDate())        : null
-  const noPrazo = spVal!==null ? spVal : (dtE&&dtP ? dtE<=dtP : null)
-  const urg = calcUrg(prazoRaw, status)
-  return {
-    id: Date.now()+i,
-    nuvem:          String(item.identificadorPedido||item.idPedido||item.numeroPedido||""),
-    destinatario:   item.destinatarioNome||item.nomeDestinatario||item.destinatario||"",
-    transportadora: item.transportadora||item.estrategiaFrete||item.estrategia||"",
-    rastreio:       item.rastreadorLastMile||item.codigoRastreio||item.rastreador||"",
-    status,
-    prazo:          prazoRaw,
-    nf:             item.notaFiscal||item.numeroNotaFiscal||"",
-    ultimaMov,
-    cidade:         item.destinatarioCidade||item.cidade||"",
-    uf:             item.destinatarioUF||item.uf||"",
-    cep:            item.destinatarioCEP||item.cep||"",
-    email:          item.destinatarioEmail||item.email||"",
-    statusPrazoRaw: spRaw,
-    dataCriacao:    item.dataCriacaoEnvio||item.dataCriacao||"",
-    motivo:         calcMotivo(status),
-    urgencia:       urg,
-    acionar:        calcAcionar(urg, status),
-    entregueNoPrazo: noPrazo,
-    enviadoSuporte: false,
-    atendimento:    entregue?"Resolvido":"Aberto",
-    alertaStatus:   null,
-    obs:"", historico: entregue?[{acao:"Importado via Boxlink — entrega concluída",ts:new Date().toLocaleString("pt-BR")}]:[],
-    responsavel:"", sentAt:null, chamado:"", isNew:true,
-  }
-}
-
-// Paths possíveis para o endpoint de última ocorrência por período
-const BOXLINK_TRACKING_PATHS = [
-  "/v2/tracking/ultima-ocorrencia",
-  "/v2/tracking/ocorrencias",
-  "/v2/tracking/periodo",
-  "/rastreamento/v2/ultima-ocorrencia",
-  "/v2/rastreamento/ultima-ocorrencia",
-  "/rastreamento/ultima-ocorrencia",  // tentado e deu 404, mantém para log
-]
-
-let _bxWorkingPath = null // cache do path que funcionou
-
-async function fetchBoxlinkPage(bToken, from, to, page) {
-  const fmt = d => d.toISOString().slice(0,19)
-  const params = `dataHoraInicio=${fmt(from)}&dataHoraFim=${fmt(to)}&page=${page}&size=100`
-  const proxyHeaders = bToken ? { Authorization:`Bearer ${bToken}` } : {}
-  const proxy = await fetch(`/api/boxlink-sync?${params}`, { headers:proxyHeaders })
-  if (proxy.ok) return proxy.json()
-  const headers = { Authorization:`Bearer ${bToken}`, "Content-Type":"application/json" }
-
-  // Usa path que já funcionou antes
-  const paths = _bxWorkingPath ? [_bxWorkingPath] : BOXLINK_TRACKING_PATHS
-
-  for (const path of paths) {
-    const url = `${BOXLINK_API}${path}?${params}`
-    try {
-      const r = await fetch(url, { headers })
-      if (r.status === 404) continue // tenta próximo
-      if (!r.ok) {
-        const txt = await r.text()
-        throw new Error(`Boxlink ${r.status}: ${txt}`)
-      }
-      _bxWorkingPath = path // salva o que funcionou
-      const d = await r.json()
-      if (Array.isArray(d)) return { items: d, hasMore: false }
-      const items = d.content || d.data || d.envios || d.ocorrencias || []
-      const hasMore = page < (d.totalPages || 1) - 1
-      return { items, hasMore }
-    } catch(e) {
-      if (e.message.startsWith("Boxlink")) throw e
-      // fetch error (CORS etc) — relança
-      throw e
-    }
-  }
-  throw new Error("Nenhum endpoint Boxlink respondeu. Verifique a documentação e informe o path correto.")
-}
-
-async function syncBoxlinkFull(bToken, onPartial) {
-  const now  = new Date()
-  const from = new Date(now - BOXLINK_SYNC_DAYS * 24 * 60 * 60 * 1000)
-  let all = [], page = 0
-  while (true) {
-    const { items, hasMore } = await fetchBoxlinkPage(bToken, from, now, page)
-    if (!items.length) break
-    const mapped = items.map((item,i) => mapBoxlinkRow(item, all.length+i))
-    all = [...all, ...mapped]
-    if (page === 0) onPartial([...all])
-    if (!hasMore) break
-    page++
-  }
-  return all
 }
 
 
@@ -1429,10 +1235,6 @@ export default function App() {
   const [syncStatus,setSyncStatus]=useState("idle")
   const [lastSync,setLastSync]=useState(null)
   const [countdown,setCountdown]=useState(10)
-  const [bxToken,setBxToken]=useState(()=>getBoxlinkToken())
-  const [bxStatus,setBxStatus]=useState("idle") // idle|syncing|ok|error
-  const [bxLastSync,setBxLastSync]=useState(null)
-  const [bxCountdown,setBxCountdown]=useState(15*60)
   const saveTimer=useRef(null); const fileRef=useRef()
   const token = session?.access_token
 
@@ -1507,19 +1309,6 @@ export default function App() {
     const cd=setInterval(()=>setCountdown(p=>p>0?p-1:10),1000)
     return ()=>{clearInterval(interval);clearInterval(cd)}
   },[token,addToast])
-
-  // Boxlink auto-sync every 15 minutes
-  useEffect(()=>{
-    if (!bxToken||!token) return
-    // Initial sync on login
-    doBoxlinkSync(bxToken, true)
-    // Countdown timer
-    const cd = setInterval(()=>setBxCountdown(p=>{
-      if (p<=1) { doBoxlinkSync(bxToken, true); return 15*60 }
-      return p-1
-    }),1000)
-    return ()=>clearInterval(cd)
-  },[bxToken, token])
 
   useEffect(()=>{
     if (!token||rows.length===0) return
@@ -1612,67 +1401,6 @@ export default function App() {
     return {...r,...ch,historico}
   }))
   const del = id => {if (!perms?.canDelete)return;setRows(prev=>prev.filter(r=>r.id!==id));dbDelete(id,token).catch(()=>{})}
-  // Merge Boxlink data into existing rows (preserves suporte state)
-  const mergeBoxlink = useCallback((incoming) => {
-    setRows(prev => {
-      const byNuvem = new Map(prev.map(r=>[r.nuvem, r]))
-      const result  = [...prev]
-      let added=0, updated=0
-      for (const novo of incoming) {
-        if (!novo.nuvem) continue
-        const existing = byNuvem.get(novo.nuvem)
-        if (!existing) {
-          result.push({...novo, isNew:true}); added++
-        } else {
-          const statusChanged = norm(existing.status) !== norm(novo.status)
-          const alertaStatus = statusChanged && existing.enviadoSuporte
-            ? `Status atualizado: ${existing.status} → ${novo.status}` : existing.alertaStatus
-          const idx = result.findIndex(r=>r.nuvem===novo.nuvem)
-          if (idx>=0) {
-            result[idx] = {
-              ...novo, id:existing.id, obs:existing.obs, responsavel:existing.responsavel,
-              chamado:existing.chamado, enviadoSuporte:existing.enviadoSuporte,
-              fluxoEspecial:existing.fluxoEspecial||"",
-              devolucaoStatus:existing.devolucaoStatus||"Aguardando tratativa",
-              reenvioStatus:existing.reenvioStatus||"Pendente",
-              decisaoCliente:existing.decisaoCliente||"",
-              motivoDevolucao:existing.motivoDevolucao||"",
-              novoPedido:existing.novoPedido||"",
-              novaTransportadora:existing.novaTransportadora||"",
-              novoRastreio:existing.novoRastreio||"",
-              materialReenvio:existing.materialReenvio||"",
-              atendimento:existing.enviadoSuporte?existing.atendimento:novo.atendimento,
-              alertaStatus,
-              historico: statusChanged
-                ? [...existing.historico,{acao:`Status: ${existing.status} → ${novo.status}`,ts:new Date().toLocaleString("pt-BR")}]
-                : existing.historico,
-              isNew: statusChanged,
-            }
-            updated++
-          }
-        }
-      }
-      return result
-    })
-    return { added:0, updated:0 }
-  },[])
-
-  const doBoxlinkSync = useCallback(async (bToken, silent=false) => {
-    if (!bToken) return
-    setBxStatus("syncing")
-    if (!silent) addToast("🔄 Sincronizando com Boxlink...")
-    try {
-      const data = await syncBoxlinkFull(bToken, partial => mergeBoxlink(partial))
-      mergeBoxlink(data)
-      setBxStatus("ok"); setBxLastSync(new Date()); setBxCountdown(15*60)
-      if (!silent) addToast(`✓ Boxlink: ${data.length} pedidos sincronizados`)
-    } catch(e) {
-      setBxStatus("error")
-      addToast("Erro Boxlink: "+e.message, "error", 8000)
-      console.error("Boxlink sync error:", e)
-    }
-  },[addToast, mergeBoxlink])
-
   const toggleSel = id => setSelIds(prev=>{const n=new Set(prev);n.has(id)?n.delete(id):n.add(id);return n})
   const clearSel  = () => setSelIds(new Set())
   const bulkSend  = () => {
@@ -1841,19 +1569,6 @@ export default function App() {
             <span style={{width:6,height:6,borderRadius:"50%",background:syncDot,display:"inline-block",boxShadow:`0 0 6px ${syncDot}66`}}/>
             <span style={{fontSize:10,color:syncDot,letterSpacing:"0.04em"}}>{syncText}</span>
           </div>
-          {/* Boxlink sync status */}
-          {bxToken&&(
-            <div style={{display:"flex",alignItems:"center",gap:6,borderLeft:`1px solid ${C.gold}22`,paddingLeft:14}}>
-              <span style={{width:6,height:6,borderRadius:"50%",background:bxStatus==="ok"?"#27ae60":bxStatus==="syncing"?C.gold:bxStatus==="error"?C.red:"#555",display:"inline-block"}}/>
-              <span style={{fontSize:10,color:bxStatus==="ok"?"#27ae60":bxStatus==="syncing"?C.gold:bxStatus==="error"?C.red:"#555",letterSpacing:"0.04em"}}>
-                {bxStatus==="syncing"?"Boxlink...":bxStatus==="ok"?`Boxlink ✓ ${Math.floor(bxCountdown/60)}m`:bxStatus==="error"?"Boxlink ✗":"Boxlink"}
-              </span>
-              <button onClick={()=>doBoxlinkSync(bxToken)} disabled={bxStatus==="syncing"}
-                style={{background:"transparent",border:`1px solid ${C.gold}44`,color:`${C.gold}88`,borderRadius:5,padding:"2px 8px",fontSize:9,cursor:"pointer",letterSpacing:"0.06em"}}>
-                ↺
-              </button>
-            </div>
-          )}
         </div>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           {perms?.canImport&&!showImp&&rows.length>0&&(
