@@ -5,22 +5,22 @@ import * as XLSX from 'xlsx'
 // ─── Design System ────────────────────────────────────────────
 // ─── Temas claro e escuro ─────────────────────────────────────
 const CL = {
-  brand:      "#0C0C0C", brandSoft:  "#1A1A1A",
-  gold:       "#B8974A", goldLight:  "#D4AF6A", goldDim: "#8C7038",
-  cream:      "#F8F5EF", creamDark:  "#F0EDE5",
-  white:      "#FFFFFF", border:     "#E8E3D8", borderDark: "#D4CFC4",
-  text1:      "#1A1A1A", text2:      "#5C5750", text3: "#9C9690", text4: "#C4C0B8",
+  brand:      "#050505", brandSoft:  "#141414",
+  gold:       "#9B8246", goldLight:  "#B79C5B", goldDim: "#6E5A2B",
+  cream:      "#F6F5F1", creamDark:  "#ECEAE4",
+  white:      "#FFFFFF", border:     "#DEDAD0", borderDark: "#C7C2B7",
+  text1:      "#111111", text2:      "#4E4A44", text3: "#858078", text4: "#B8B2A8",
   red:        "#C0392B", redSoft:    "#F9ECEB", redBorder:  "#EBCBC8",
   green:      "#2E7D50", greenSoft:  "#EAF4EE", greenBorder:"#C0DCCB",
   amber:      "#8C6D1F", amberSoft:  "#FDF6E3", amberBorder:"#E8D5A3",
   blue:       "#1A5276", blueSoft:   "#EAF2FB", blueBorder: "#AACDE6",
 }
 const CD = {
-  brand:      "#F0EDE5", brandSoft:  "#D4CFC4",
-  gold:       "#D4AF6A", goldLight:  "#E8C97A", goldDim: "#B8974A",
-  cream:      "#0F0F0F", creamDark:  "#1A1A1A",
-  white:      "#1E1E1E", border:     "#2E2E2E", borderDark: "#3A3A3A",
-  text1:      "#F0EDE5", text2:      "#C4C0B8", text3: "#7A7670", text4: "#4A4640",
+  brand:      "#F7F6F1", brandSoft:  "#E3DFD4",
+  gold:       "#C4A25D", goldLight:  "#D5B974", goldDim: "#9B8246",
+  cream:      "#080808", creamDark:  "#111111",
+  white:      "#181818", border:     "#2A2A2A", borderDark: "#3A3A3A",
+  text1:      "#F7F6F1", text2:      "#C9C3B8", text3: "#8A8378", text4: "#5E584F",
   red:        "#E05555", redSoft:    "#2A1212", redBorder:  "#4A2020",
   green:      "#4AB870", greenSoft:  "#0A2015", greenBorder:"#1A4030",
   amber:      "#C89830", amberSoft:  "#281E00", amberBorder:"#4A3800",
@@ -33,19 +33,20 @@ function applyTheme(dark) {
   Object.keys(src).forEach(k => { C[k] = src[k] })
 }
 const shadow = {
-  sm: "0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)",
-  md: "0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04)",
-  lg: "0 8px 24px rgba(0,0,0,0.10), 0 4px 8px rgba(0,0,0,0.06)",
+  sm: "0 1px 0 rgba(17,17,17,0.06)",
+  md: "0 10px 24px rgba(17,17,17,0.06)",
+  lg: "0 18px 42px rgba(17,17,17,0.10)",
 }
 const getGlobalStyle = () => `
-  @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600&family=Inter:wght@300;400;500;600&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: ${C.cream}; color: ${C.text1}; }
+  body { background: ${C.cream}; color: ${C.text1}; font-family: 'Inter', Arial, sans-serif; }
   ::-webkit-scrollbar { width: 4px; height: 4px; }
   ::-webkit-scrollbar-track { background: ${C.creamDark}; }
   ::-webkit-scrollbar-thumb { background: ${C.borderDark}; border-radius: 2px; }
   ::-webkit-scrollbar-thumb:hover { background: ${C.gold}; }
-  select, input, textarea, button { font-family: 'Inter', sans-serif; }
+  select, input, textarea, button { font-family: 'Inter', Arial, sans-serif; }
+  button { -webkit-font-smoothing: antialiased; }
   tr:hover td { background: ${C.creamDark} !important; }
 `
 
@@ -395,6 +396,21 @@ function applyQF(rows, qf) {
   return rows
 }
 
+function prioridadeOperacional(r) {
+  const status = (r.status||"").toLowerCase()
+  const semMov = diasSemMov(r.ultimaMov)
+  const prazo = parsePrazo(r.prazo)
+  const hoje = new Date(); hoje.setHours(0,0,0,0)
+  const vencido = prazo && prazo < hoje && !isEntregue(r.status)
+  const critica = r.urgencia==="Alta" || r.acionar==="Sim" || vencido || status.includes("extravia") || status.includes("devolv") || status.includes("recusa") || (semMov!==null&&semMov>=ALERTA_DIAS)
+  if (!critica) return {level:"normal", label:"Monitorar", color:C.text3, bg:C.white, bd:C.border, left:C.borderDark}
+  if (status.includes("extravia")) return {level:"critica", label:"Extravio", color:C.red, bg:C.redSoft, bd:C.redBorder, left:C.red}
+  if (vencido) return {level:"critica", label:"Prazo vencido", color:C.red, bg:C.redSoft, bd:C.redBorder, left:C.red}
+  if (status.includes("devolv")||status.includes("recusa")) return {level:"alta", label:"Devolucao", color:C.amber, bg:C.amberSoft, bd:C.amberBorder, left:C.amber}
+  if (semMov!==null&&semMov>=ALERTA_DIAS) return {level:"alta", label:`Parado ${semMov}d`, color:C.amber, bg:C.amberSoft, bd:C.amberBorder, left:C.amber}
+  return {level:"alta", label:"Prioridade alta", color:C.red, bg:C.redSoft, bd:C.redBorder, left:C.red}
+}
+
 // BUG FIX #6: applySortRows — removido trailing ", [rows,...])" corrompido
 function applySortRows(rows, col, dir) {
   if (!col) return rows
@@ -608,12 +624,10 @@ function TimeOpenBadge({sentAt}) {
 }
 
 function KpiCard({label,val,sub,accent}) {
-  return <div style={{background:C.white,borderRadius:12,padding:"20px 22px",border:`1px solid ${accent?C.redBorder:C.border}`,boxShadow:shadow.sm,position:"relative",overflow:"hidden"}}>
-    {accent&&<div style={{position:"absolute",top:0,left:0,right:0,height:3,background:`linear-gradient(90deg,${C.red},#e74c3c88)`}}/>}
-    {!accent&&<div style={{position:"absolute",top:0,left:0,right:0,height:2,background:`linear-gradient(90deg,${C.gold}44,${C.gold})`}}/>}
-    <div style={{fontSize:9,color:C.text3,letterSpacing:"0.14em",textTransform:"uppercase",marginBottom:10,fontWeight:500}}>{label}</div>
-    <div style={{fontSize:28,fontWeight:600,color:accent?C.red:C.brand,letterSpacing:"-0.02em",lineHeight:1,marginBottom:6,fontFamily:"'Cormorant Garamond',serif"}}>{val}</div>
-    {sub&&<div style={{fontSize:11,color:C.text3,fontWeight:400}}>{sub}</div>}
+  return <div style={{background:C.white,borderRadius:4,padding:"16px 18px",border:`1px solid ${accent?C.redBorder:C.border}`,borderLeft:`4px solid ${accent?C.red:C.brand}`,boxShadow:shadow.sm,position:"relative",overflow:"hidden"}}>
+    <div style={{fontSize:10,color:C.text3,textTransform:"uppercase",marginBottom:12,fontWeight:700}}>{label}</div>
+    <div style={{fontSize:30,fontWeight:800,color:accent?C.red:C.text1,lineHeight:1,marginBottom:7}}>{val}</div>
+    {sub&&<div style={{fontSize:11,color:C.text3,fontWeight:500}}>{sub}</div>}
   </div>
 }
 
@@ -636,7 +650,7 @@ function Toast({toasts}) {
   </div>
 }
 
-const getINP = () => ({borderRadius:8,border:`1px solid ${C.border}`,padding:"9px 12px",fontSize:12,background:C.white,color:C.text1,outline:"none",transition:"border-color .2s"})
+const getINP = () => ({borderRadius:4,border:`1px solid ${C.borderDark}`,padding:"9px 12px",fontSize:12,background:C.white,color:C.text1,outline:"none",transition:"border-color .2s, box-shadow .2s"})
 
 // ─── Componentes de Suporte (NOVOS) ──────────────────────────
 
@@ -844,7 +858,7 @@ function LoginScreen({onLogin}) {
       <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:600,height:600,borderRadius:"50%",border:`1px solid ${C.gold}18`,pointerEvents:"none"}}/>
       <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:400,height:400,borderRadius:"50%",border:`1px solid ${C.gold}12`,pointerEvents:"none"}}/>
       <div style={{textAlign:"center",marginBottom:48,position:"relative"}}>
-        <div style={{fontSize:36,letterSpacing:"0.28em",color:C.white,textTransform:"uppercase",fontFamily:"'Cormorant Garamond',serif",fontWeight:500,lineHeight:1}}>Saint Germain</div>
+        <div style={{fontSize:34,color:C.white,textTransform:"uppercase",fontWeight:800,lineHeight:0.95}}>SAINT<br/>GERMAIN</div>
         <div style={{width:48,height:"1px",background:C.gold,margin:"16px auto"}}/>
         <div style={{fontSize:9,letterSpacing:"0.35em",color:`${C.gold}99`,textTransform:"uppercase"}}>Central de Pedidos</div>
       </div>
@@ -979,7 +993,7 @@ function UsuariosPanel({token,addToast}) {
     <div style={{padding:"32px 40px",maxWidth:900}}>
       <div style={{marginBottom:28}}>
         <div style={{fontSize:9,letterSpacing:"0.18em",textTransform:"uppercase",color:C.gold,marginBottom:6}}>Administração</div>
-        <div style={{fontSize:22,fontWeight:500,color:C.text1,fontFamily:"'Cormorant Garamond',serif",letterSpacing:"0.03em"}}>Gestão de Usuários</div>
+        <div style={{fontSize:22,fontWeight:800,color:C.text1}}>Gestão de Usuários</div>
       </div>
 
       {/* ── Boxlink Integration Settings ── */}
@@ -1667,6 +1681,8 @@ export default function App() {
   const baseDev  = rows.filter(r=>r.atendimento!=="Resolvido"&&r.fluxoEspecial!=="reenvio"&&(r.fluxoEspecial==="devolucao"||classificarProblema(r)==="DEVOLUCAO"))
   const baseReenvio = rows.filter(r=>r.atendimento!=="Resolvido"&&r.fluxoEspecial==="reenvio")
   const baseArch = rows.filter(r=>r.atendimento==="Resolvido")
+  const prioridadeRows = baseLog.filter(r=>prioridadeOperacional(r).level!=="normal")
+  const criticaRows = baseLog.filter(r=>prioridadeOperacional(r).level==="critica")
   const detail   = selSup?baseSup.find(r=>r.id===selSup):null
   const qCounts  = Object.fromEntries(QFILTERS.map(f=>[f.id,applyQF(baseLog,f.id).length]))
   const filteredLog = applySortRows(applyQF(baseLog,qf).filter(r=>{
@@ -1769,13 +1785,14 @@ export default function App() {
       <Toast toasts={toasts}/>
 
       {/* ── HEADER ── */}
-      <div style={{background:C.brand,padding:"0 32px",display:"flex",alignItems:"stretch",justifyContent:"space-between",borderBottom:`1px solid ${C.gold}33`}}>
-        <div style={{display:"flex",alignItems:"center",gap:24,padding:"14px 0"}}>
-          <div>
-            <div style={{fontSize:10,letterSpacing:"0.45em",color:C.gold,textTransform:"uppercase",fontWeight:300,lineHeight:1}}>Saint Germain</div>
-            <div style={{fontSize:8,letterSpacing:"0.28em",color:`${C.gold}55`,textTransform:"uppercase",marginTop:3}}>Central de Pedidos</div>
+      <div style={{background:C.brand,padding:"0 28px",display:"flex",alignItems:"stretch",justifyContent:"space-between",borderBottom:`1px solid ${C.borderDark}`}}>
+        <div style={{display:"flex",alignItems:"center",gap:22,padding:"12px 0"}}>
+          <div style={{minWidth:184}}>
+            <div style={{fontSize:18,color:C.white,textTransform:"uppercase",fontWeight:800,lineHeight:0.95}}>SAINT</div>
+            <div style={{fontSize:18,color:C.white,textTransform:"uppercase",fontWeight:800,lineHeight:0.95}}>GERMAIN</div>
+            <div style={{fontSize:9,color:C.gold,textTransform:"uppercase",marginTop:6,fontWeight:700}}>Central de Pedidos</div>
           </div>
-          <div style={{width:1,height:32,background:`${C.gold}22`}}/>
+          <div style={{width:1,height:38,background:"#2B2B2B"}}/>
           <div style={{display:"flex",alignItems:"center",gap:7}}>
             <span style={{width:6,height:6,borderRadius:"50%",background:syncDot,display:"inline-block",boxShadow:`0 0 6px ${syncDot}66`}}/>
             <span style={{fontSize:10,color:syncDot,letterSpacing:"0.04em"}}>{syncText}</span>
@@ -1820,12 +1837,12 @@ export default function App() {
 
       {/* ── NAV ── */}
       {!showImp&&(
-        <div style={{background:C.white,borderBottom:`1px solid ${C.border}`,padding:"0 32px",display:"flex",alignItems:"stretch",boxShadow:"0 1px 0 rgba(0,0,0,0.04)"}}>
+        <div style={{background:C.white,borderBottom:`1px solid ${C.border}`,padding:"0 28px",display:"flex",alignItems:"stretch",boxShadow:"0 1px 0 rgba(0,0,0,0.04)",overflowX:"auto"}}>
           {TABS.map(t=>(
             <button key={t.key} onClick={()=>{setTab(t.key);if(t.key!=="suporte")setSelSup(null)}}
-              style={{background:"transparent",border:"none",borderBottom:tab===t.key?`2px solid ${C.gold}`:"2px solid transparent",color:tab===t.key?C.text1:C.text3,padding:"14px 20px",cursor:"pointer",fontSize:10,letterSpacing:"0.14em",textTransform:"uppercase",fontWeight:tab===t.key?500:400,marginBottom:"-1px",display:"flex",alignItems:"center",gap:8,transition:"color .2s"}}>
+              style={{background:tab===t.key?C.brand:"transparent",border:"none",borderBottom:`1px solid ${tab===t.key?C.brand:"transparent"}`,color:tab===t.key?C.white:C.text2,padding:"13px 18px",cursor:"pointer",fontSize:11,textTransform:"uppercase",fontWeight:800,marginBottom:"-1px",display:"flex",alignItems:"center",gap:8,transition:"all .2s",whiteSpace:"nowrap"}}>
               {t.label}
-              {t.badge!=null&&<span style={{background:tab===t.key?C.brand:C.red,color:C.white,borderRadius:10,padding:"2px 7px",fontSize:9,fontWeight:600,letterSpacing:"0.04em"}}>{t.badge}</span>}
+              {t.badge!=null&&<span style={{background:tab===t.key?C.white:C.red,color:tab===t.key?C.brand:C.white,borderRadius:3,padding:"2px 7px",fontSize:9,fontWeight:800}}>{t.badge}</span>}
             </button>
           ))}
         </div>
@@ -1836,7 +1853,7 @@ export default function App() {
         <div style={{padding:48,maxWidth:640,margin:"0 auto"}}>
           <div style={{textAlign:"center",marginBottom:36}}>
             <div style={{fontSize:9,letterSpacing:"0.22em",textTransform:"uppercase",color:C.gold,marginBottom:10}}>{importing?"Adicionar dados":"Bem-vindo"}</div>
-            <div style={{fontSize:28,fontWeight:500,color:C.text1,fontFamily:"'Cormorant Garamond',serif",letterSpacing:"0.04em",marginBottom:8}}>Importe seus dados</div>
+            <div style={{fontSize:28,fontWeight:800,color:C.text1,marginBottom:8}}>Importe seus dados</div>
             <div style={{color:C.text3,fontSize:12,lineHeight:1.6}}>Aceita .csv (cp1252), .xls, .xlsx ou colagem direta do Excel</div>
           </div>
           <div style={{background:C.white,borderRadius:14,border:`1px solid ${C.border}`,padding:24,marginBottom:16,boxShadow:shadow.sm}}>
@@ -1871,7 +1888,7 @@ export default function App() {
         <div style={{padding:"28px 40px"}}>
           <div style={{marginBottom:24}}>
             <div style={{fontSize:9,letterSpacing:"0.18em",textTransform:"uppercase",color:C.gold,marginBottom:4}}>Visão geral</div>
-            <div style={{fontSize:22,fontWeight:500,color:C.text1,fontFamily:"'Cormorant Garamond',serif",letterSpacing:"0.03em"}}>Dashboard Operacional</div>
+            <div style={{fontSize:22,fontWeight:800,color:C.text1}}>Dashboard Operacional</div>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:12,marginBottom:20}}>
             {[
@@ -1924,7 +1941,7 @@ export default function App() {
                     {ufData.map((u,i)=>(
                       <div key={u.uf} style={{padding:"14px 16px",borderRight:i%5!==4?`1px solid ${C.border}`:"none",borderBottom:i<ufData.length-5?`1px solid ${C.border}`:"none",background:i%2===0?C.white:C.cream}}>
                         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
-                          <span style={{fontSize:14,fontWeight:700,color:C.text1,fontFamily:"'Cormorant Garamond',serif",letterSpacing:"0.05em"}}>{u.uf}</span>
+                          <span style={{fontSize:14,fontWeight:800,color:C.text1}}>{u.uf}</span>
                           <span style={{fontSize:10,fontWeight:600,color:u.pct>=80?C.green:u.pct>=60?C.amber:u.pct>0?C.red:C.text4}}>{u.pct>0?`${u.pct}%`:"—"}</span>
                         </div>
                         <div style={{fontSize:10,color:C.text3,marginBottom:4}}>{u.total} pedidos</div>
@@ -1988,11 +2005,19 @@ export default function App() {
       {/* ── LOGÍSTICA ── */}
       {tab==="logistica"&&!showImp&&(
         <div style={{padding:"24px 32px"}}>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:20}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:20}}>
             <KpiCard label="Em logística"    val={st.log}/>
             <KpiCard label="Urgência alta"   val={st.alta}    accent={st.alta>0}/>
+            <KpiCard label="CrÃ­ticos agora" val={criticaRows.length} accent={criticaRows.length>0}/>
             <KpiCard label="Acionar suporte" val={st.acionar} accent={st.acionar>0}/>
           </div>
+          {prioridadeRows.length>0&&(
+            <div style={{background:C.brand,border:`1px solid ${C.brand}`,borderLeft:`4px solid ${C.red}`,color:C.white,padding:"12px 16px",marginBottom:14,display:"flex",alignItems:"center",gap:12,boxShadow:shadow.md}}>
+              <div style={{fontSize:11,fontWeight:800,textTransform:"uppercase"}}>{prioridadeRows.length} pedidos exigem tratativa</div>
+              <div style={{fontSize:11,color:"#BDBDBD",flex:1}}>Prioridade por prazo vencido, extravio, devolucao, urgencia alta ou falta de movimentacao.</div>
+              <button onClick={()=>{setQf("urgente");clearSel()}} style={{background:C.white,border:"none",color:C.brand,borderRadius:4,padding:"7px 12px",fontSize:10,fontWeight:800,cursor:"pointer"}}>Ver urgentes</button>
+            </div>
+          )}
           <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
             {QFILTERS.map(f=>(
               <button key={f.id} onClick={()=>{setQf(f.id);clearSel()}}
@@ -2048,10 +2073,15 @@ export default function App() {
               </thead>
               <tbody>
                 {pagedLog.length===0?<tr><td colSpan={11} style={{textAlign:"center",padding:36,color:C.text4}}>Nenhum pedido encontrado</td></tr>
-                :pagedLog.map((r,i)=>(
-                  <tr key={r.id} style={{background:r.isNew?`${C.gold}14`:i%2===0?C.white:C.cream,borderBottom:`1px solid ${C.border}66`,outline:r.isNew?`1px solid ${C.gold}44`:"none"}}>
+                :pagedLog.map((r,i)=>{
+                  const pr = prioridadeOperacional(r)
+                  return (
+                  <tr key={r.id} style={{background:pr.level!=="normal"?pr.bg:r.isNew?`${C.gold}14`:i%2===0?C.white:C.cream,borderBottom:`1px solid ${pr.level!=="normal"?pr.bd:C.border}66`,borderLeft:`4px solid ${pr.left}`,outline:r.isNew?`1px solid ${C.gold}44`:"none"}}>
                     <td style={{padding:`${pd}px 8px`,textAlign:"center"}}>{perms?.canSendSupport&&<input type="checkbox" checked={selIds.has(r.id)} onChange={()=>toggleSel(r.id)} style={{cursor:"pointer",accentColor:C.gold}}/>}</td>
-                    <td style={{padding:`${pd}px 14px`,fontWeight:600,color:C.text1,fontSize:11}}>{r.nuvem}</td>
+                    <td style={{padding:`${pd}px 14px`,fontWeight:800,color:C.text1,fontSize:11}}>
+                      <div>{r.nuvem}</div>
+                      {pr.level!=="normal"&&<div style={{display:"inline-flex",marginTop:4,background:C.white,border:`1px solid ${pr.bd}`,color:pr.color,borderRadius:3,padding:"2px 6px",fontSize:9,fontWeight:800,textTransform:"uppercase"}}>{pr.label}</div>}
+                    </td>
                     <td style={{padding:`${pd}px 14px`,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:C.text1}} title={r.destinatario}>{r.destinatario}</td>
                     <td style={{padding:`${pd}px 14px`,color:C.text2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={r.transportadora}>{r.transportadora}</td>
                     <td style={{padding:`${pd}px 10px`}}><StatusBadge val={r.status}/></td>
@@ -2067,7 +2097,7 @@ export default function App() {
                     )}</td>
                     <td style={{padding:`${pd}px 8px`,textAlign:"center"}}>{perms?.canDelete&&<button onClick={()=>del(r.id)} style={{background:"transparent",border:"none",color:C.text4,cursor:"pointer",fontSize:14}}>×</button>}</td>
                   </tr>
-                ))}
+                )})}
               </tbody>
             </table>
           </div>
@@ -2165,7 +2195,7 @@ export default function App() {
                 <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:10}}>
                   <div>
                     <div style={{fontSize:9,color:C.gold,letterSpacing:"0.16em",textTransform:"uppercase",marginBottom:4}}>Pedido em atendimento</div>
-                    <div style={{fontSize:18,fontWeight:500,color:C.text1,fontFamily:"'Cormorant Garamond',serif",marginBottom:2}}>{detail.destinatario}</div>
+                    <div style={{fontSize:18,fontWeight:800,color:C.text1,marginBottom:2}}>{detail.destinatario}</div>
                     <div style={{fontSize:11,color:C.text3}}>#{detail.nuvem} · {detail.transportadora}</div>
                   </div>
                   <button onClick={()=>setSelSup(null)} style={{background:"transparent",border:`1px solid ${C.border}`,color:C.text4,cursor:"pointer",fontSize:16,width:32,height:32,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:8,flexShrink:0}}>×</button>
