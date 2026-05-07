@@ -371,7 +371,10 @@ function parseData(text) {
       devolucaoStatus: "Aguardando tratativa",
       reenvioStatus: "Pendente",
       decisaoCliente: "",
+      motivoDevolucao: "",
       novoPedido: "",
+      novaTransportadora: "",
+      novoRastreio: "",
       materialReenvio: "",
       obs:"", historico: entregue?[{acao:"Arquivado automaticamente — entrega concluída",ts:new Date().toLocaleString("pt-BR")}]:[],
       responsavel:"", sentAt:null, chamado:"", isNew:true,
@@ -1302,7 +1305,7 @@ function OperacaoEspecialPanel({type, rows, perms, upd, onCreateReenvio, onResol
     ? {title:"Devolucao", empty:"Nenhum pedido em devolucao", statusKey:"devolucaoStatus", options:["Aguardando tratativa","Aguardando cliente","Em transporte reverso","Recebido no CD","Reenviar","Reembolsar"]}
     : {title:"Reenvio", empty:"Nenhum reenvio cadastrado", statusKey:"reenvioStatus", options:["Pendente","Pedido criado","Em separacao","Enviado","Concluido"]}
   const q = search.toLowerCase()
-  const data = rows.filter(r=>!q||[r.nuvem,r.destinatario,r.rastreio,r.status,r.novoPedido,r.materialReenvio].some(v=>(v||"").toLowerCase().includes(q)))
+  const data = rows.filter(r=>!q||[r.nuvem,r.destinatario,r.rastreio,r.status,r.novoPedido,r.novaTransportadora,r.novoRastreio,r.materialReenvio,r.motivoDevolucao].some(v=>(v||"").toLowerCase().includes(q)))
   const pendentes = rows.filter(r=>(r[cfg.statusKey]||cfg.options[0])===cfg.options[0]).length
   const emAndamento = Math.max(0, rows.length - pendentes)
   const inputStyle = {...getINP(),width:"100%",boxSizing:"border-box",fontSize:11,padding:"7px 9px"}
@@ -1321,15 +1324,18 @@ function OperacaoEspecialPanel({type, rows, perms, upd, onCreateReenvio, onResol
         <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,tableLayout:"fixed",minWidth:isDev?1040:1120}}>
           <colgroup>
             <col style={{width:90}}/><col style={{width:170}}/><col style={{width:130}}/><col style={{width:150}}/>
+            {!isDev&&<col style={{width:120}}/>}
             {!isDev&&<col style={{width:130}}/>}
-            {!isDev&&<col style={{width:170}}/>}
+            {!isDev&&<col style={{width:130}}/>}
+            {!isDev&&<col style={{width:150}}/>}
+            <col style={{width:180}}/>
             <col style={{width:150}}/><col style={{width:130}}/><col style={{width:210}}/>
           </colgroup>
           <thead>
-            <tr>{["Pedido","Cliente","Transportadora","Status origem",...(!isDev?["Novo pedido","Material"]:[]),"Etapa","Responsavel","Acoes"].map(h=><th key={h} style={{padding:"12px 14px",textAlign:"left",color:C.gold,fontWeight:400,fontSize:9,letterSpacing:"0.14em",textTransform:"uppercase",background:C.brand,whiteSpace:"nowrap"}}>{h}</th>)}</tr>
+            <tr>{["Pedido","Cliente","Transportadora","Status origem",...(!isDev?["Novo pedido","Nova transp.","Novo rastreio","Material"]:[]),"Motivo","Etapa","Responsavel","Acoes"].map(h=><th key={h} style={{padding:"12px 14px",textAlign:"left",color:C.gold,fontWeight:400,fontSize:9,letterSpacing:"0.14em",textTransform:"uppercase",background:C.brand,whiteSpace:"nowrap"}}>{h}</th>)}</tr>
           </thead>
           <tbody>
-            {data.length===0?<tr><td colSpan={isDev?7:9} style={{padding:34,textAlign:"center",color:C.text4}}>{cfg.empty}</td></tr>
+            {data.length===0?<tr><td colSpan={isDev?8:12} style={{padding:34,textAlign:"center",color:C.text4}}>{cfg.empty}</td></tr>
             :data.map((r,i)=>(
               <tr key={r.id} style={{background:i%2===0?C.white:C.cream,borderBottom:`1px solid ${C.border}`}}>
                 <td style={{padding:"11px 14px",fontWeight:700,color:C.text1}}>{r.nuvem}</td>
@@ -1337,7 +1343,10 @@ function OperacaoEspecialPanel({type, rows, perms, upd, onCreateReenvio, onResol
                 <td style={{padding:"11px 14px",color:C.text2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.transportadora||"—"}</td>
                 <td style={{padding:"11px 14px"}}><StatusBadge val={r.status}/></td>
                 {!isDev&&<td style={{padding:"9px 10px"}}><input value={r.novoPedido||""} onChange={e=>upd(r.id,{novoPedido:e.target.value})} placeholder="No novo pedido" style={inputStyle}/></td>}
+                {!isDev&&<td style={{padding:"9px 10px"}}><input value={r.novaTransportadora||""} onChange={e=>upd(r.id,{novaTransportadora:e.target.value})} placeholder="Transportadora" style={inputStyle}/></td>}
+                {!isDev&&<td style={{padding:"9px 10px"}}><input value={r.novoRastreio||""} onChange={e=>upd(r.id,{novoRastreio:e.target.value})} placeholder="Rastreio" style={inputStyle}/></td>}
                 {!isDev&&<td style={{padding:"9px 10px"}}><input value={r.materialReenvio||""} onChange={e=>upd(r.id,{materialReenvio:e.target.value})} placeholder="Material enviado" style={inputStyle}/></td>}
+                <td style={{padding:"11px 14px",color:C.text2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={r.motivoDevolucao||r.motivo}>{r.motivoDevolucao||r.motivo||"—"}</td>
                 <td style={{padding:"9px 10px"}}>
                   <select value={r[cfg.statusKey]||cfg.options[0]} onChange={e=>upd(r.id,{[cfg.statusKey]:e.target.value},{acao:`${cfg.title}: ${e.target.value}`})} disabled={!perms?.canOperate} style={inputStyle}>
                     {cfg.options.map(o=><option key={o}>{o}</option>)}
@@ -1598,7 +1607,11 @@ export default function App() {
               fluxoEspecial:existing.fluxoEspecial||"",
               devolucaoStatus:existing.devolucaoStatus||"Aguardando tratativa",
               reenvioStatus:existing.reenvioStatus||"Pendente",
+              decisaoCliente:existing.decisaoCliente||"",
+              motivoDevolucao:existing.motivoDevolucao||"",
               novoPedido:existing.novoPedido||"",
+              novaTransportadora:existing.novaTransportadora||"",
+              novoRastreio:existing.novoRastreio||"",
               materialReenvio:existing.materialReenvio||"",
               atendimento:existing.enviadoSuporte?existing.atendimento:novo.atendimento,
               alertaStatus,
@@ -1651,12 +1664,14 @@ export default function App() {
   const handleResolve   = id => {if (!perms?.canOperate)return;upd(id,{atendimento:"Resolvido"},{acao:"Atendimento finalizado",usuario:nomeAtendente});setSelSup(null);addToast("Pedido finalizado")}
   const handleCreateReenvio = id => {
     if (!perms?.canOperate) return
-    upd(id,{fluxoEspecial:"reenvio",decisaoCliente:"Reenvio",reenvioStatus:"Pendente",devolucaoStatus:"Reenviar",atendimento:"Em andamento"},{acao:"Cliente optou por reenvio",usuario:nomeAtendente})
+    const atual = rows.find(r=>r.id===id)
+    upd(id,{fluxoEspecial:"reenvio",decisaoCliente:"Reenvio",motivoDevolucao:atual?.motivoDevolucao||atual?.motivo||"",reenvioStatus:"Pendente",devolucaoStatus:"Reenviar",atendimento:"Em andamento"},{acao:"Cliente optou por reenvio",usuario:nomeAtendente})
     setSelSup(null); addToast("Pedido movido para Reenvio")
   }
   const handleMarkDevolucao = id => {
     if (!perms?.canOperate) return
-    upd(id,{fluxoEspecial:"devolucao",decisaoCliente:"Estorno / devolucao",devolucaoStatus:"Aguardando produto",atendimento:"Em andamento"},{acao:"Cliente optou por estorno/devolucao do produto",usuario:nomeAtendente})
+    const atual = rows.find(r=>r.id===id)
+    upd(id,{fluxoEspecial:"devolucao",decisaoCliente:"Estorno / devolucao",motivoDevolucao:atual?.motivoDevolucao||atual?.motivo||"",devolucaoStatus:"Aguardando produto",atendimento:"Em andamento"},{acao:"Cliente optou por estorno/devolucao do produto",usuario:nomeAtendente})
     addToast("Pedido marcado em Devolucao")
   }
   const handleReturnLog = id => {if (!perms?.canOperate)return;upd(id,{enviadoSuporte:false,sentAt:null},{acao:"Devolvido à Logística",usuario:nomeAtendente});setSelSup(null)}
@@ -1679,7 +1694,7 @@ export default function App() {
   const toggleSort = col => {if (sortCol===col)setSortDir(d=>d==="asc"?"desc":"asc");else{setSortCol(col);setSortDir("asc")}}
 
   const baseLog  = rows.filter(r=>!r.enviadoSuporte&&r.atendimento!=="Resolvido")
-  const baseSup  = rows.filter(r=>r.enviadoSuporte&&r.atendimento!=="Resolvido")
+  const baseSup  = rows.filter(r=>r.enviadoSuporte&&r.atendimento!=="Resolvido"&&!r.fluxoEspecial)
   const baseDev  = rows.filter(r=>r.atendimento!=="Resolvido"&&r.fluxoEspecial!=="reenvio"&&(r.fluxoEspecial==="devolucao"||classificarProblema(r)==="DEVOLUCAO"))
   const baseReenvio = rows.filter(r=>r.atendimento!=="Resolvido"&&r.fluxoEspecial==="reenvio")
   const baseArch = rows.filter(r=>r.atendimento==="Resolvido")
@@ -2236,6 +2251,8 @@ export default function App() {
                 {perms?.canOperate&&(
                   <div style={{marginTop:10,border:`1px solid ${C.border}`,background:C.cream,padding:10,borderRadius:4}}>
                     <div style={{fontSize:8,color:C.text3,textTransform:"uppercase",fontWeight:800,marginBottom:8}}>Decisao do cliente</div>
+                    <textarea value={detail.motivoDevolucao||detail.motivo||""} onChange={e=>upd(detail.id,{motivoDevolucao:e.target.value})} placeholder="Motivo da devolucao, estorno ou reenvio..." rows={2}
+                      style={{width:"100%",borderRadius:4,border:`1px solid ${C.borderDark}`,padding:"9px 10px",fontSize:11,resize:"vertical",fontFamily:"inherit",background:C.white,color:C.text1,boxSizing:"border-box",lineHeight:1.5,marginBottom:8}}/>
                     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr auto",gap:8}}>
                       <button onClick={()=>handleMarkDevolucao(detail.id)} style={{background:detail.decisaoCliente==="Estorno / devolucao"?C.brand:C.white,border:`1px solid ${C.borderDark}`,color:detail.decisaoCliente==="Estorno / devolucao"?C.white:C.text1,borderRadius:4,padding:"9px 10px",fontSize:10,cursor:"pointer",fontWeight:800}}>Estorno / devolver produto</button>
                       <button onClick={()=>handleCreateReenvio(detail.id)} style={{background:detail.decisaoCliente==="Reenvio"?C.brand:C.white,border:`1px solid ${C.borderDark}`,color:detail.decisaoCliente==="Reenvio"?C.white:C.text1,borderRadius:4,padding:"9px 10px",fontSize:10,cursor:"pointer",fontWeight:800}}>Reenvio</button>
