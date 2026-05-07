@@ -370,6 +370,7 @@ function parseData(text) {
       fluxoEspecial: "",
       devolucaoStatus: "Aguardando tratativa",
       reenvioStatus: "Pendente",
+      decisaoCliente: "",
       novoPedido: "",
       materialReenvio: "",
       obs:"", historico: entregue?[{acao:"Arquivado automaticamente — entrega concluída",ts:new Date().toLocaleString("pt-BR")}]:[],
@@ -1369,6 +1370,7 @@ export default function App() {
   const [importing,setImporting]=useState(false)
   const [loadingData,setLoadingData]=useState(false)
   const [compact,setCompact]=useState(false)
+  const [navOpen,setNavOpen]=useState(false)
   const [dark,setDark]=useState(false)
   const [toasts,setToasts]=useState([])
   const [lSrch,setLSrch]=useState(""); const [lSt,setLSt]=useState("Todos")
@@ -1643,18 +1645,18 @@ export default function App() {
     if (!perms?.canOperate) return
     const ts=new Date().toLocaleString("pt-BR")
     setRows(prev=>prev.map(r=>selSupIds.has(r.id)?{...r,atendimento:"Resolvido",historico:[...r.historico,{acao:"Arquivado em lote",ts}]}:r))
-    addToast(`${selSupIds.size} pedido${selSupIds.size>1?"s":""} arquivado${selSupIds.size>1?"s":""}`)
+    addToast(`${selSupIds.size} pedido${selSupIds.size>1?"s":""} finalizado${selSupIds.size>1?"s":""}`)
     if (selSupIds.has(selSup)) setSelSup(null); setSelSupIds(new Set())
   }
-  const handleResolve   = id => {if (!perms?.canOperate)return;upd(id,{atendimento:"Resolvido"},{acao:"Atendimento resolvido",usuario:nomeAtendente});setSelSup(null);addToast("Pedido resolvido e arquivado")}
+  const handleResolve   = id => {if (!perms?.canOperate)return;upd(id,{atendimento:"Resolvido"},{acao:"Atendimento finalizado",usuario:nomeAtendente});setSelSup(null);addToast("Pedido finalizado")}
   const handleCreateReenvio = id => {
     if (!perms?.canOperate) return
-    upd(id,{fluxoEspecial:"reenvio",reenvioStatus:"Pendente",devolucaoStatus:"Reenviar",atendimento:"Em andamento"},{acao:"Reenvio aberto pelo suporte",usuario:nomeAtendente})
+    upd(id,{fluxoEspecial:"reenvio",decisaoCliente:"Reenvio",reenvioStatus:"Pendente",devolucaoStatus:"Reenviar",atendimento:"Em andamento"},{acao:"Cliente optou por reenvio",usuario:nomeAtendente})
     setSelSup(null); addToast("Pedido movido para Reenvio")
   }
   const handleMarkDevolucao = id => {
     if (!perms?.canOperate) return
-    upd(id,{fluxoEspecial:"devolucao",devolucaoStatus:"Aguardando tratativa",atendimento:"Em andamento"},{acao:"Pedido marcado para acompanhamento de devolucao",usuario:nomeAtendente})
+    upd(id,{fluxoEspecial:"devolucao",decisaoCliente:"Estorno / devolucao",devolucaoStatus:"Aguardando produto",atendimento:"Em andamento"},{acao:"Cliente optou por estorno/devolucao do produto",usuario:nomeAtendente})
     addToast("Pedido marcado em Devolucao")
   }
   const handleReturnLog = id => {if (!perms?.canOperate)return;upd(id,{enviadoSuporte:false,sentAt:null},{acao:"Devolvido à Logística",usuario:nomeAtendente});setSelSup(null)}
@@ -1666,13 +1668,13 @@ export default function App() {
   const handleArchiveFromLog = id => {
     if (!perms?.canOperate) return
     upd(id, {atendimento:"Resolvido", enviadoSuporte:false}, {acao:"Arquivado pela Logística — entrega confirmada", usuario:nomeAtendente})
-    addToast("Pedido arquivado")
+    addToast("Pedido finalizado")
   }
   const bulkArchiveFromLog = () => {
     if (!perms?.canOperate) return
     const ts = new Date().toLocaleString("pt-BR")
     setRows(prev=>prev.map(r=>selIds.has(r.id)?{...r,atendimento:"Resolvido",enviadoSuporte:false,historico:[...r.historico,{acao:"Arquivado em lote pela Logística",ts,usuario:nomeAtendente}]}:r))
-    addToast(`${selIds.size} pedido${selIds.size>1?"s":""} arquivado${selIds.size>1?"s":""}`); clearSel()
+    addToast(`${selIds.size} pedido${selIds.size>1?"s":""} finalizado${selIds.size>1?"s":""}`); clearSel()
   }
   const toggleSort = col => {if (sortCol===col)setSortDir(d=>d==="asc"?"desc":"asc");else{setSortCol(col);setSortDir("asc")}}
 
@@ -1775,12 +1777,12 @@ export default function App() {
   const PERFLABEL={admin:"Admin",logistica:"Logística",suporte:"Suporte",leitura:"Leitura"}
   const syncDot  = syncStatus==="error"?C.red:syncStatus==="saving"?C.gold:syncStatus==="saved"?"#27ae60":"#555"
   const syncText = syncStatus==="loading"?"Carregando...":syncStatus==="saving"?"Salvando...":syncStatus==="saved"?"Sincronizado ✓":syncStatus==="error"?"Erro":lastSync?`Sync em ${countdown}s`:""
-  const TABS=[{key:"dashboard",label:"Dashboard",badge:null},{key:"logistica",label:"Logística",badge:st.acionar>0?st.acionar:null},{key:"suporte",label:"Suporte",badge:ss.abertos>0?ss.abertos:null},{key:"devolucao",label:"Devolução",badge:devStats.total>0?devStats.total:null},{key:"reenvio",label:"Reenvio",badge:reenvStats.pendentes>0?reenvStats.pendentes:null},{key:"arquivados",label:"Arquivados",badge:arch>0?arch:null},{key:"usuarios",label:"Usuários",badge:null}].filter(t=>perms?.tabs.includes(t.key))
+  const TABS=[{key:"dashboard",label:"Dashboard",icon:"◆",badge:null},{key:"logistica",label:"Logística",icon:"⇄",badge:st.acionar>0?st.acionar:null},{key:"suporte",label:"Suporte",icon:"●",badge:ss.abertos>0?ss.abertos:null},{key:"devolucao",label:"Devolução",icon:"↩",badge:devStats.total>0?devStats.total:null},{key:"reenvio",label:"Reenvio",icon:"↗",badge:reenvStats.pendentes>0?reenvStats.pendentes:null},{key:"arquivados",label:"Finalizados",icon:"✓",badge:arch>0?arch:null},{key:"usuarios",label:"Usuários",icon:"◦",badge:null}].filter(t=>perms?.tabs.includes(t.key))
   const TH  = {padding:`${compact?8:11}px 14px`,textAlign:"left",color:C.gold,fontWeight:400,fontSize:9,letterSpacing:"0.14em",textTransform:"uppercase",borderBottom:`1px solid #2A2A2A`,whiteSpace:"nowrap",background:C.brand,position:"sticky",top:0,zIndex:5,cursor:"pointer"}
   const THF = {...TH,cursor:"default"}
 
   return (
-    <div style={{fontFamily:"'Inter',sans-serif",minHeight:"100vh",background:C.cream,color:C.text1,transition:"background .3s"}}>
+    <div style={{fontFamily:"'Inter',sans-serif",minHeight:"100vh",background:C.cream,color:C.text1,transition:"background .3s",paddingLeft:!showImp?(navOpen?216:68):0}}>
       <style>{getGlobalStyle()}</style>
       <Toast toasts={toasts}/>
 
@@ -1837,14 +1839,18 @@ export default function App() {
 
       {/* ── NAV ── */}
       {!showImp&&(
-        <div style={{background:C.white,borderBottom:`1px solid ${C.border}`,padding:"0 28px",display:"flex",alignItems:"stretch",boxShadow:"0 1px 0 rgba(0,0,0,0.04)",overflowX:"auto"}}>
+        <div style={{position:"fixed",left:0,top:0,bottom:0,width:navOpen?216:68,background:C.brand,borderRight:`1px solid ${C.borderDark}`,zIndex:50,display:"flex",flexDirection:"column",transition:"width .2s",boxShadow:shadow.lg}}>
+          <button onClick={()=>setNavOpen(v=>!v)} title={navOpen?"Recolher menu":"Expandir menu"} style={{height:64,background:"transparent",border:"none",borderBottom:"1px solid #252525",color:C.white,cursor:"pointer",fontSize:18,fontWeight:800}}>{navOpen?"×":"☰"}</button>
+          <div style={{padding:"10px 8px",display:"flex",flexDirection:"column",gap:6}}>
           {TABS.map(t=>(
-            <button key={t.key} onClick={()=>{setTab(t.key);if(t.key!=="suporte")setSelSup(null)}}
-              style={{background:tab===t.key?C.brand:"transparent",border:"none",borderBottom:`1px solid ${tab===t.key?C.brand:"transparent"}`,color:tab===t.key?C.white:C.text2,padding:"13px 18px",cursor:"pointer",fontSize:11,textTransform:"uppercase",fontWeight:800,marginBottom:"-1px",display:"flex",alignItems:"center",gap:8,transition:"all .2s",whiteSpace:"nowrap"}}>
-              {t.label}
-              {t.badge!=null&&<span style={{background:tab===t.key?C.white:C.red,color:tab===t.key?C.brand:C.white,borderRadius:3,padding:"2px 7px",fontSize:9,fontWeight:800}}>{t.badge}</span>}
+            <button key={t.key} onClick={()=>{setTab(t.key);if(t.key!=="suporte")setSelSup(null)}} title={t.label}
+              style={{background:tab===t.key?C.white:"transparent",border:"none",color:tab===t.key?C.brand:"#D6D6D6",padding:navOpen?"12px 12px":"12px 0",cursor:"pointer",fontSize:11,textTransform:"uppercase",fontWeight:800,display:"flex",alignItems:"center",justifyContent:navOpen?"flex-start":"center",gap:10,transition:"all .2s",whiteSpace:"nowrap",borderRadius:4,position:"relative"}}>
+              <span style={{width:24,textAlign:"center",fontSize:15}}>{t.icon}</span>
+              {navOpen&&<span>{t.label}</span>}
+              {t.badge!=null&&<span style={{marginLeft:navOpen?"auto":0,position:navOpen?"static":"absolute",top:5,right:5,background:tab===t.key?C.brand:C.red,color:C.white,borderRadius:3,padding:"1px 6px",fontSize:9,fontWeight:800}}>{t.badge}</span>}
             </button>
           ))}
+          </div>
         </div>
       )}
 
@@ -2042,7 +2048,7 @@ export default function App() {
             <div style={{background:C.brand,borderRadius:10,padding:"12px 20px",marginBottom:14,display:"flex",alignItems:"center",gap:10,boxShadow:shadow.md}}>
               <span style={{color:"#888",fontSize:12,flex:1}}>{selIds.size} pedido{selIds.size>1?"s":""} selecionado{selIds.size>1?"s":""}</span>
               <button onClick={bulkSend} style={{background:C.gold,border:"none",color:C.white,borderRadius:7,padding:"8px 18px",fontSize:11,cursor:"pointer",fontWeight:500,letterSpacing:"0.08em"}}>Enviar ao Suporte ({selIds.size})</button>
-              {perms?.canOperate&&<button onClick={bulkArchiveFromLog} style={{background:C.green,border:"none",color:C.white,borderRadius:7,padding:"8px 18px",fontSize:11,cursor:"pointer",fontWeight:500,letterSpacing:"0.08em"}}>✓ Arquivar ({selIds.size})</button>}
+              {perms?.canOperate&&<button onClick={bulkArchiveFromLog} style={{background:C.green,border:"none",color:C.white,borderRadius:7,padding:"8px 18px",fontSize:11,cursor:"pointer",fontWeight:500,letterSpacing:"0.08em"}}>✓ Finalizar ({selIds.size})</button>}
               <button onClick={clearSel} style={{background:"transparent",border:`1px solid #333`,color:"#666",borderRadius:7,padding:"8px 14px",fontSize:11,cursor:"pointer"}}>Cancelar</button>
             </div>
           )}
@@ -2144,7 +2150,7 @@ export default function App() {
               {perms?.canOperate&&selSupIds.size>0&&(
                 <div style={{background:C.brand,borderRadius:8,padding:"9px 14px",display:"flex",alignItems:"center",gap:8}}>
                   <span style={{color:"#888",fontSize:11,flex:1}}>{selSupIds.size} selecionado{selSupIds.size>1?"s":""}</span>
-                  <button onClick={bulkArchive} style={{background:C.gold,border:"none",color:C.white,borderRadius:6,padding:"5px 12px",fontSize:10,cursor:"pointer",fontWeight:500}}>Arquivar ({selSupIds.size})</button>
+                  <button onClick={bulkArchive} style={{background:C.gold,border:"none",color:C.white,borderRadius:6,padding:"5px 12px",fontSize:10,cursor:"pointer",fontWeight:500}}>Finalizar ({selSupIds.size})</button>
                   <button onClick={()=>setSelSupIds(new Set())} style={{background:"transparent",border:"none",color:"#666",fontSize:12,cursor:"pointer"}}>✕</button>
                 </div>
               )}
@@ -2227,10 +2233,15 @@ export default function App() {
                   onResolver={()=>handleResolve(detail.id)}
                   onDevolver={()=>handleReturnLog(detail.id)}
                 />
-                {perms?.canOperate&&detail.fluxoEspecial!=="reenvio"&&(
-                  <button onClick={()=>handleMarkDevolucao(detail.id)} style={{marginTop:8,background:C.amberSoft,border:`1px solid ${C.amberBorder}`,color:C.amber,borderRadius:8,padding:"8px 12px",fontSize:10,cursor:"pointer",fontWeight:700,letterSpacing:"0.05em"}}>
-                    Acompanhar na aba Devolucao
-                  </button>
+                {perms?.canOperate&&(
+                  <div style={{marginTop:10,border:`1px solid ${C.border}`,background:C.cream,padding:10,borderRadius:4}}>
+                    <div style={{fontSize:8,color:C.text3,textTransform:"uppercase",fontWeight:800,marginBottom:8}}>Decisao do cliente</div>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr auto",gap:8}}>
+                      <button onClick={()=>handleMarkDevolucao(detail.id)} style={{background:detail.decisaoCliente==="Estorno / devolucao"?C.brand:C.white,border:`1px solid ${C.borderDark}`,color:detail.decisaoCliente==="Estorno / devolucao"?C.white:C.text1,borderRadius:4,padding:"9px 10px",fontSize:10,cursor:"pointer",fontWeight:800}}>Estorno / devolver produto</button>
+                      <button onClick={()=>handleCreateReenvio(detail.id)} style={{background:detail.decisaoCliente==="Reenvio"?C.brand:C.white,border:`1px solid ${C.borderDark}`,color:detail.decisaoCliente==="Reenvio"?C.white:C.text1,borderRadius:4,padding:"9px 10px",fontSize:10,cursor:"pointer",fontWeight:800}}>Reenvio</button>
+                      <button onClick={()=>handleResolve(detail.id)} style={{background:C.green,border:"none",color:C.white,borderRadius:4,padding:"9px 12px",fontSize:10,cursor:"pointer",fontWeight:800}}>Finalizar</button>
+                    </div>
+                  </div>
                 )}
               </div>
 
@@ -2358,14 +2369,14 @@ export default function App() {
               <div style={{textAlign:"center"}}>
                 <div style={{width:48,height:1,background:C.border,margin:"0 auto 20px"}}/>
                 <div style={{fontSize:10,letterSpacing:"0.18em",textTransform:"uppercase",color:C.text4}}>Selecione um pedido para atender</div>
-                <div style={{fontSize:9,color:C.text4,marginTop:6,letterSpacing:"0.06em"}}>ou selecione vários para arquivar em lote</div>
+                <div style={{fontSize:9,color:C.text4,marginTop:6,letterSpacing:"0.06em"}}>ou selecione vários para finalizar em lote</div>
               </div>
             </div>
           ):null}
         </div>
       )}
 
-      {/* ── ARQUIVADOS ── */}
+      {/* ── FINALIZADOS ── */}
       {tab==="devolucao"&&!showImp&&(
         <OperacaoEspecialPanel
           type="devolucao"
@@ -2391,13 +2402,13 @@ export default function App() {
       {tab==="arquivados"&&(
         <div style={{padding:"24px 32px"}}>
           <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:20}}>
-            <KpiCard label="Total arquivados" val={arch}/>
+            <KpiCard label="Total finalizados" val={arch}/>
             <KpiCard label="Resolvidos hoje" val={rows.filter(r=>{if(r.atendimento!=="Resolvido")return false;const h=r.historico.find(x=>x.acao&&(x.acao.includes("Resolvido")||x.acao.includes("Arquivado")));return h&&h.ts&&h.ts.startsWith(new Date().toLocaleDateString("pt-BR"))}).length}/>
             <KpiCard label="Com observações" val={baseArch.filter(r=>r.obs&&r.obs.trim()).length}/>
           </div>
-          {arch===0?<div style={{textAlign:"center",padding:"56px 0",color:C.text4}}><div style={{fontSize:32,marginBottom:12,opacity:0.2}}>◎</div><div style={{fontSize:14}}>Nenhum atendimento arquivado</div></div>:(
+          {arch===0?<div style={{textAlign:"center",padding:"56px 0",color:C.text4}}><div style={{fontSize:32,marginBottom:12,opacity:0.2}}>◎</div><div style={{fontSize:14}}>Nenhum atendimento finalizado</div></div>:(
             <div>
-              <div style={{marginBottom:14}}><input value={aSrch} onChange={e=>setASrch(e.target.value)} placeholder="Buscar nos arquivados..." style={{...getINP(),width:"100%",padding:"10px 14px",boxSizing:"border-box",boxShadow:shadow.sm}}/></div>
+              <div style={{marginBottom:14}}><input value={aSrch} onChange={e=>setASrch(e.target.value)} placeholder="Buscar nos finalizados..." style={{...getINP(),width:"100%",padding:"10px 14px",boxSizing:"border-box",boxShadow:shadow.sm}}/></div>
               {(()=>{
                 const aTotalPages = Math.max(1,Math.ceil(archRows.length/PAGE_SIZE))
                 const aSafeP = Math.min(aPage,aTotalPages)
@@ -2420,14 +2431,14 @@ export default function App() {
                             <td style={{padding:`${pd}px 14px`}}><SlaCell prazo={r.prazo}/></td>
                             <td style={{padding:`${pd}px 14px`,color:C.text3,fontSize:11}}>{r.chamado||"—"}</td>
                             <td style={{padding:`${pd}px 14px`,color:C.text3,fontSize:11,overflow:"hidden",textOverflow:"ellipsis"}}>{r.responsavel||"—"}</td>
-                            <td style={{padding:`${pd}px 14px`}}>{perms?.canOperate&&<button onClick={()=>upd(r.id,{atendimento:"Em andamento"},{acao:"Reaberto dos arquivados",usuario:nomeAtendente})} style={{background:C.cream,border:`1px solid ${C.border}`,color:C.text2,borderRadius:6,padding:"4px 12px",fontSize:10,cursor:"pointer",fontWeight:500}}>Reabrir</button>}</td>
+                            <td style={{padding:`${pd}px 14px`}}>{perms?.canOperate&&<button onClick={()=>upd(r.id,{atendimento:"Em andamento"},{acao:"Reaberto dos finalizados",usuario:nomeAtendente})} style={{background:C.cream,border:`1px solid ${C.border}`,color:C.text2,borderRadius:6,padding:"4px 12px",fontSize:10,cursor:"pointer",fontWeight:500}}>Reabrir</button>}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
                   <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:10}}>
-                    <div style={{fontSize:11,color:C.text4}}>{archRows.length===0?"Nenhum resultado":`Mostrando ${((aSafeP-1)*PAGE_SIZE)+1}–${Math.min(aSafeP*PAGE_SIZE,archRows.length)} de ${archRows.length} arquivados`}</div>
+                    <div style={{fontSize:11,color:C.text4}}>{archRows.length===0?"Nenhum resultado":`Mostrando ${((aSafeP-1)*PAGE_SIZE)+1}–${Math.min(aSafeP*PAGE_SIZE,archRows.length)} de ${archRows.length} finalizados`}</div>
                     {aTotalPages>1&&<div style={{display:"flex",gap:4,alignItems:"center"}}>
                       <button onClick={()=>setAPage(n=>Math.max(1,n-1))} disabled={aSafeP===1} style={{...getINP(),padding:"5px 12px",cursor:aSafeP===1?"not-allowed":"pointer",opacity:aSafeP===1?0.4:1}}>‹</button>
                       <span style={{fontSize:11,color:C.text3,padding:"0 10px"}}>{aSafeP} / {aTotalPages}</span>
