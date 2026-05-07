@@ -1143,6 +1143,7 @@ function KanbanSuporteView({rows, onSelect, selSup, perms, upd, nomeAtendente}) 
 const BOXLINK_API   = "https://api.boxlink.com.br"
 const BOXLINK_TOKEN_KEY = "sg_boxlink_token"
 const BOXLINK_SYNC_INTERVAL = 15 * 60 * 1000 // 15 minutos
+const BOXLINK_SYNC_DAYS = 7
 
 function getBoxlinkToken() { return localStorage.getItem(BOXLINK_TOKEN_KEY)||"" }
 function setBoxlinkToken(t) { localStorage.setItem(BOXLINK_TOKEN_KEY, t) }
@@ -1204,6 +1205,9 @@ let _bxWorkingPath = null // cache do path que funcionou
 async function fetchBoxlinkPage(bToken, from, to, page) {
   const fmt = d => d.toISOString().slice(0,19)
   const params = `dataHoraInicio=${fmt(from)}&dataHoraFim=${fmt(to)}&page=${page}&size=100`
+  const proxyHeaders = bToken ? { Authorization:`Bearer ${bToken}` } : {}
+  const proxy = await fetch(`/api/boxlink-sync?${params}`, { headers:proxyHeaders })
+  if (proxy.ok) return proxy.json()
   const headers = { Authorization:`Bearer ${bToken}`, "Content-Type":"application/json" }
 
   // Usa path que já funcionou antes
@@ -1235,7 +1239,7 @@ async function fetchBoxlinkPage(bToken, from, to, page) {
 
 async function syncBoxlinkFull(bToken, onPartial) {
   const now  = new Date()
-  const from = new Date(now - 60 * 24 * 60 * 60 * 1000) // 60 dias
+  const from = new Date(now - BOXLINK_SYNC_DAYS * 24 * 60 * 60 * 1000)
   let all = [], page = 0
   while (true) {
     const { items, hasMore } = await fetchBoxlinkPage(bToken, from, now, page)
