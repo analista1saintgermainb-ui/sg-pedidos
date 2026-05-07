@@ -52,7 +52,6 @@ const getGlobalStyle = () => `
 // ─── Supabase ─────────────────────────────────────────────────
 const SUPA_URL     = "https://jdiuuhfhsiymttxllssr.supabase.co"
 const SUPA_KEY     = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkaXV1aGZoc2l5bXR0eGxsc3NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc3NTMyNTcsImV4cCI6MjA5MzMyOTI1N30.wNGhwh2bCF0HZSonn09S-15kEVAQGzEP1yWvRx3l_N4"
-const SUPA_SERVICE = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkaXV1aGZoc2l5bXR0eGxsc3NyIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3Nzc1MzI1NywiZXhwIjoyMDkzMzI5MjU3fQ.yjZ8VKr8YfbMBELdoKevdE1k_dd2OXUlYjUj4n2GeQw"
 const SH  = { apikey: SUPA_KEY, "Content-Type": "application/json" }
 const aSH = t => ({ ...SH, Authorization: `Bearer ${t}` })
 
@@ -61,8 +60,8 @@ async function signIn(email, password) {
   const d = await r.json(); if (!r.ok) throw new Error(d.error_description||d.msg||"Erro ao fazer login"); return d
 }
 async function signOut(token) { await fetch(`${SUPA_URL}/auth/v1/logout`,{method:"POST",headers:aSH(token)}) }
-async function createUser(email, password) {
-  const r = await fetch(`${SUPA_URL}/auth/v1/admin/users`,{method:"POST",headers:{apikey:SUPA_SERVICE,Authorization:`Bearer ${SUPA_SERVICE}`,"Content-Type":"application/json"},body:JSON.stringify({email,password,email_confirm:true})})
+async function createUser(email, password, token) {
+  const r = await fetch("/api/create-user", {method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`},body:JSON.stringify({email,password})})
   const d = await r.json(); if (!r.ok) throw new Error(d.msg||d.message||"Erro ao criar usuário"); return d
 }
 async function dbLoadFast(token, onPartial) {
@@ -954,7 +953,7 @@ function UsuariosPanel({token,addToast}) {
   const handleCreate = async e => {
     e.preventDefault(); setSaving(true)
     try {
-      const auth = await createUser(form.email,form.senha)
+      const auth = await createUser(form.email,form.senha,token)
       await saveUsuario({id:auth.id,email:form.email,nome:form.nome,perfil:form.perfil,ativo:true},token)
       addToast(`Usuário ${form.email} criado!`)
       setForm({email:"",nome:"",perfil:"logistica",senha:""})
