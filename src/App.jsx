@@ -986,7 +986,7 @@ function UsuariosPanel({token,addToast}) {
             {[["Nome","nome","text","Nome completo"],["E-mail","email","email","email@exemplo.com"],["Senha inicial","senha","password","Mínimo 6 caracteres"]].map(([lbl,key,type,ph])=>(
               <div key={key}>
                 <label style={{fontSize:9,letterSpacing:"0.12em",textTransform:"uppercase",color:C.text3,fontWeight:500,display:"block",marginBottom:6}}>{lbl}</label>
-                <input value={form[key]} onChange={e=>setForm(f=>({...f,[key]:e.target.value}))} type={type} placeholder={ph} required={key!=="nome"} minLength={key==="senha"?6:undefined} style={{...getINP(),width:"100%",boxSizing:"border-box"}}/>
+                <input value={form[key]} onChange={e=>setForm(f=>({...f,[key]:e.target.value}))} type={type} name={`novo-usuario-${key}`} autoComplete={key==="senha"?"new-password":"off"} placeholder={ph} required={key!=="nome"} minLength={key==="senha"?6:undefined} style={{...getINP(),width:"100%",boxSizing:"border-box"}}/>
               </div>
             ))}
             <div>
