@@ -94,10 +94,10 @@ async function deleteUsuario(id, token){ await fetch(`${SUPA_URL}/rest/v1/usuari
 
 // ─── Permissões ───────────────────────────────────────────────
 const PERMS = {
-  admin:    {tabs:["dashboard","logistica","suporte","arquivados","usuarios"],canImport:true,canDelete:true,canClear:true,canSendSupport:true,canOperate:true},
+  admin:    {tabs:["dashboard","logistica","suporte","devolucao","reenvio","arquivados","usuarios"],canImport:true,canDelete:true,canClear:true,canSendSupport:true,canOperate:true},
   logistica:{tabs:["dashboard","logistica"],canImport:true,canDelete:false,canClear:false,canSendSupport:true,canOperate:true},
-  suporte:  {tabs:["suporte","arquivados"],canImport:false,canDelete:false,canClear:false,canSendSupport:false,canOperate:true},
-  leitura:  {tabs:["dashboard","logistica","suporte","arquivados"],canImport:false,canDelete:false,canClear:false,canSendSupport:false,canOperate:false},
+  suporte:  {tabs:["suporte","devolucao","reenvio","arquivados"],canImport:false,canDelete:false,canClear:false,canSendSupport:false,canOperate:true},
+  leitura:  {tabs:["dashboard","logistica","suporte","devolucao","reenvio","arquivados"],canImport:false,canDelete:false,canClear:false,canSendSupport:false,canOperate:false},
 }
 
 // ─── BUG FIX #1: ALERTA_DIAS movido para ANTES de QFILTERS ───
@@ -366,6 +366,11 @@ function parseData(text) {
       atendimento:  entregue?"Resolvido":"Aberto",
       entregueNoPrazo: noPrazo,
       alertaStatus: null,
+      fluxoEspecial: "",
+      devolucaoStatus: "Aguardando tratativa",
+      reenvioStatus: "Pendente",
+      novoPedido: "",
+      materialReenvio: "",
       obs:"", historico: entregue?[{acao:"Arquivado automaticamente — entrega concluída",ts:new Date().toLocaleString("pt-BR")}]:[],
       responsavel:"", sentAt:null, chamado:"", isNew:true,
     }
@@ -1275,6 +1280,70 @@ function FilterBar({search, onSearch, showFilters, onToggleFilters, filters, onC
   )
 }
 
+function OperacaoEspecialPanel({type, rows, perms, upd, onCreateReenvio, onResolve}) {
+  const [search,setSearch]=useState("")
+  const isDev = type==="devolucao"
+  const cfg = isDev
+    ? {title:"Devolucao", empty:"Nenhum pedido em devolucao", statusKey:"devolucaoStatus", options:["Aguardando tratativa","Aguardando cliente","Em transporte reverso","Recebido no CD","Reenviar","Reembolsar"]}
+    : {title:"Reenvio", empty:"Nenhum reenvio cadastrado", statusKey:"reenvioStatus", options:["Pendente","Pedido criado","Em separacao","Enviado","Concluido"]}
+  const q = search.toLowerCase()
+  const data = rows.filter(r=>!q||[r.nuvem,r.destinatario,r.rastreio,r.status,r.novoPedido,r.materialReenvio].some(v=>(v||"").toLowerCase().includes(q)))
+  const pendentes = rows.filter(r=>(r[cfg.statusKey]||cfg.options[0])===cfg.options[0]).length
+  const emAndamento = Math.max(0, rows.length - pendentes)
+  const inputStyle = {...getINP(),width:"100%",boxSizing:"border-box",fontSize:11,padding:"7px 9px"}
+
+  return (
+    <div style={{padding:"24px 32px"}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:18}}>
+        <KpiCard label={`Total ${cfg.title}`} val={rows.length}/>
+        <KpiCard label="Pendentes" val={pendentes} accent={pendentes>0}/>
+        <KpiCard label="Em andamento" val={emAndamento}/>
+      </div>
+      <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:14}}>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder={`Buscar em ${cfg.title.toLowerCase()}...`} style={{...getINP(),flex:1,padding:"10px 14px",boxSizing:"border-box",boxShadow:shadow.sm}}/>
+      </div>
+      <div style={{overflowX:"auto",borderRadius:12,border:`1px solid ${C.border}`,boxShadow:shadow.sm,background:C.white}}>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,tableLayout:"fixed",minWidth:isDev?1040:1120}}>
+          <colgroup>
+            <col style={{width:90}}/><col style={{width:170}}/><col style={{width:130}}/><col style={{width:150}}/>
+            {!isDev&&<col style={{width:130}}/>}
+            {!isDev&&<col style={{width:170}}/>}
+            <col style={{width:150}}/><col style={{width:130}}/><col style={{width:210}}/>
+          </colgroup>
+          <thead>
+            <tr>{["Pedido","Cliente","Transportadora","Status origem",...(!isDev?["Novo pedido","Material"]:[]),"Etapa","Responsavel","Acoes"].map(h=><th key={h} style={{padding:"12px 14px",textAlign:"left",color:C.gold,fontWeight:400,fontSize:9,letterSpacing:"0.14em",textTransform:"uppercase",background:C.brand,whiteSpace:"nowrap"}}>{h}</th>)}</tr>
+          </thead>
+          <tbody>
+            {data.length===0?<tr><td colSpan={isDev?7:9} style={{padding:34,textAlign:"center",color:C.text4}}>{cfg.empty}</td></tr>
+            :data.map((r,i)=>(
+              <tr key={r.id} style={{background:i%2===0?C.white:C.cream,borderBottom:`1px solid ${C.border}`}}>
+                <td style={{padding:"11px 14px",fontWeight:700,color:C.text1}}>{r.nuvem}</td>
+                <td style={{padding:"11px 14px",color:C.text2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={r.destinatario}>{r.destinatario||"—"}</td>
+                <td style={{padding:"11px 14px",color:C.text2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.transportadora||"—"}</td>
+                <td style={{padding:"11px 14px"}}><StatusBadge val={r.status}/></td>
+                {!isDev&&<td style={{padding:"9px 10px"}}><input value={r.novoPedido||""} onChange={e=>upd(r.id,{novoPedido:e.target.value})} placeholder="No novo pedido" style={inputStyle}/></td>}
+                {!isDev&&<td style={{padding:"9px 10px"}}><input value={r.materialReenvio||""} onChange={e=>upd(r.id,{materialReenvio:e.target.value})} placeholder="Material enviado" style={inputStyle}/></td>}
+                <td style={{padding:"9px 10px"}}>
+                  <select value={r[cfg.statusKey]||cfg.options[0]} onChange={e=>upd(r.id,{[cfg.statusKey]:e.target.value},{acao:`${cfg.title}: ${e.target.value}`})} disabled={!perms?.canOperate} style={inputStyle}>
+                    {cfg.options.map(o=><option key={o}>{o}</option>)}
+                  </select>
+                </td>
+                <td style={{padding:"9px 10px"}}><input value={r.responsavel||""} onChange={e=>upd(r.id,{responsavel:e.target.value})} placeholder="Responsavel" disabled={!perms?.canOperate} style={inputStyle}/></td>
+                <td style={{padding:"9px 12px"}}>
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                    {isDev&&perms?.canOperate&&<button onClick={()=>onCreateReenvio(r.id)} style={{background:C.amberSoft,border:`1px solid ${C.amberBorder}`,color:C.amber,borderRadius:7,padding:"6px 10px",fontSize:10,cursor:"pointer",fontWeight:600}}>Gerar reenvio</button>}
+                    {perms?.canOperate&&<button onClick={()=>onResolve(r.id)} style={{background:C.gold,border:"none",color:C.white,borderRadius:7,padding:"6px 10px",fontSize:10,cursor:"pointer",fontWeight:600}}>Concluir</button>}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
 export default function App() {
   const [session,setSession]=useState(null)
   const [perfil,setPerfil]=useState(null)
@@ -1510,6 +1579,11 @@ export default function App() {
             result[idx] = {
               ...novo, id:existing.id, obs:existing.obs, responsavel:existing.responsavel,
               chamado:existing.chamado, enviadoSuporte:existing.enviadoSuporte,
+              fluxoEspecial:existing.fluxoEspecial||"",
+              devolucaoStatus:existing.devolucaoStatus||"Aguardando tratativa",
+              reenvioStatus:existing.reenvioStatus||"Pendente",
+              novoPedido:existing.novoPedido||"",
+              materialReenvio:existing.materialReenvio||"",
               atendimento:existing.enviadoSuporte?existing.atendimento:novo.atendimento,
               alertaStatus,
               historico: statusChanged
@@ -1559,6 +1633,16 @@ export default function App() {
     if (selSupIds.has(selSup)) setSelSup(null); setSelSupIds(new Set())
   }
   const handleResolve   = id => {if (!perms?.canOperate)return;upd(id,{atendimento:"Resolvido"},{acao:"Atendimento resolvido",usuario:nomeAtendente});setSelSup(null);addToast("Pedido resolvido e arquivado")}
+  const handleCreateReenvio = id => {
+    if (!perms?.canOperate) return
+    upd(id,{fluxoEspecial:"reenvio",reenvioStatus:"Pendente",devolucaoStatus:"Reenviar",atendimento:"Em andamento"},{acao:"Reenvio aberto pelo suporte",usuario:nomeAtendente})
+    setSelSup(null); addToast("Pedido movido para Reenvio")
+  }
+  const handleMarkDevolucao = id => {
+    if (!perms?.canOperate) return
+    upd(id,{fluxoEspecial:"devolucao",devolucaoStatus:"Aguardando tratativa",atendimento:"Em andamento"},{acao:"Pedido marcado para acompanhamento de devolucao",usuario:nomeAtendente})
+    addToast("Pedido marcado em Devolucao")
+  }
   const handleReturnLog = id => {if (!perms?.canOperate)return;upd(id,{enviadoSuporte:false,sentAt:null},{acao:"Devolvido à Logística",usuario:nomeAtendente});setSelSup(null)}
   const handleClearAll  = () => {
     if (!perms?.canClear) return
@@ -1580,6 +1664,8 @@ export default function App() {
 
   const baseLog  = rows.filter(r=>!r.enviadoSuporte&&r.atendimento!=="Resolvido")
   const baseSup  = rows.filter(r=>r.enviadoSuporte&&r.atendimento!=="Resolvido")
+  const baseDev  = rows.filter(r=>r.atendimento!=="Resolvido"&&r.fluxoEspecial!=="reenvio"&&(r.fluxoEspecial==="devolucao"||classificarProblema(r)==="DEVOLUCAO"))
+  const baseReenvio = rows.filter(r=>r.atendimento!=="Resolvido"&&r.fluxoEspecial==="reenvio")
   const baseArch = rows.filter(r=>r.atendimento==="Resolvido")
   const detail   = selSup?baseSup.find(r=>r.id===selSup):null
   const qCounts  = Object.fromEntries(QFILTERS.map(f=>[f.id,applyQF(baseLog,f.id).length]))
@@ -1608,6 +1694,8 @@ export default function App() {
   const stOpts=uniq(baseLog.map(r=>r.status)), trOpts=uniq(baseLog.map(r=>r.transportadora))
   const st={log:baseLog.length,alta:baseLog.filter(r=>r.urgencia==="Alta").length,acionar:baseLog.filter(r=>r.acionar==="Sim").length}
   const ss={total:baseSup.length,abertos:baseSup.filter(r=>r.atendimento==="Aberto").length,andamento:baseSup.filter(r=>r.atendimento==="Em andamento").length}
+  const devStats={total:baseDev.length,pendentes:baseDev.filter(r=>(r.devolucaoStatus||"Aguardando tratativa")==="Aguardando tratativa").length}
+  const reenvStats={total:baseReenvio.length,pendentes:baseReenvio.filter(r=>(r.reenvioStatus||"Pendente")==="Pendente").length}
   const arch=baseArch.length
 
   const entregues  = rows.filter(r=>isEntregue(r.status))
@@ -1671,7 +1759,7 @@ export default function App() {
   const PERFLABEL={admin:"Admin",logistica:"Logística",suporte:"Suporte",leitura:"Leitura"}
   const syncDot  = syncStatus==="error"?C.red:syncStatus==="saving"?C.gold:syncStatus==="saved"?"#27ae60":"#555"
   const syncText = syncStatus==="loading"?"Carregando...":syncStatus==="saving"?"Salvando...":syncStatus==="saved"?"Sincronizado ✓":syncStatus==="error"?"Erro":lastSync?`Sync em ${countdown}s`:""
-  const TABS=[{key:"dashboard",label:"Dashboard",badge:null},{key:"logistica",label:"Logística",badge:st.acionar>0?st.acionar:null},{key:"suporte",label:"Suporte",badge:ss.abertos>0?ss.abertos:null},{key:"arquivados",label:"Arquivados",badge:arch>0?arch:null},{key:"usuarios",label:"Usuários",badge:null}].filter(t=>perms?.tabs.includes(t.key))
+  const TABS=[{key:"dashboard",label:"Dashboard",badge:null},{key:"logistica",label:"Logística",badge:st.acionar>0?st.acionar:null},{key:"suporte",label:"Suporte",badge:ss.abertos>0?ss.abertos:null},{key:"devolucao",label:"Devolução",badge:devStats.total>0?devStats.total:null},{key:"reenvio",label:"Reenvio",badge:reenvStats.pendentes>0?reenvStats.pendentes:null},{key:"arquivados",label:"Arquivados",badge:arch>0?arch:null},{key:"usuarios",label:"Usuários",badge:null}].filter(t=>perms?.tabs.includes(t.key))
   const TH  = {padding:`${compact?8:11}px 14px`,textAlign:"left",color:C.gold,fontWeight:400,fontSize:9,letterSpacing:"0.14em",textTransform:"uppercase",borderBottom:`1px solid #2A2A2A`,whiteSpace:"nowrap",background:C.brand,position:"sticky",top:0,zIndex:5,cursor:"pointer"}
   const THF = {...TH,cursor:"default"}
 
@@ -2104,12 +2192,16 @@ export default function App() {
                     addToast(`🚛 ${detail.transportadora} acionada`)
                   }}
                   onReenvio={()=>{
-                    upd(detail.id,{atendimento:detail.atendimento==="Aberto"?"Em andamento":detail.atendimento},{acao:"Reenvio solicitado ao cliente",usuario:nomeAtendente})
-                    addToast("📦 Reenvio registrado")
+                    handleCreateReenvio(detail.id)
                   }}
                   onResolver={()=>handleResolve(detail.id)}
                   onDevolver={()=>handleReturnLog(detail.id)}
                 />
+                {perms?.canOperate&&detail.fluxoEspecial!=="reenvio"&&(
+                  <button onClick={()=>handleMarkDevolucao(detail.id)} style={{marginTop:8,background:C.amberSoft,border:`1px solid ${C.amberBorder}`,color:C.amber,borderRadius:8,padding:"8px 12px",fontSize:10,cursor:"pointer",fontWeight:700,letterSpacing:"0.05em"}}>
+                    Acompanhar na aba Devolucao
+                  </button>
+                )}
               </div>
 
               {/* BLOCO 2 + 3 — CONTEÚDO ROLÁVEL */}
@@ -2244,6 +2336,28 @@ export default function App() {
       )}
 
       {/* ── ARQUIVADOS ── */}
+      {tab==="devolucao"&&!showImp&&(
+        <OperacaoEspecialPanel
+          type="devolucao"
+          rows={baseDev}
+          perms={perms}
+          upd={upd}
+          onCreateReenvio={handleCreateReenvio}
+          onResolve={handleResolve}
+        />
+      )}
+
+      {tab==="reenvio"&&!showImp&&(
+        <OperacaoEspecialPanel
+          type="reenvio"
+          rows={baseReenvio}
+          perms={perms}
+          upd={upd}
+          onCreateReenvio={handleCreateReenvio}
+          onResolve={handleResolve}
+        />
+      )}
+
       {tab==="arquivados"&&(
         <div style={{padding:"24px 32px"}}>
           <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:20}}>
