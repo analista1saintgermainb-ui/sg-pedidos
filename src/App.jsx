@@ -566,8 +566,32 @@ export default function App() {
   const baseSup = rows.filter(r => r.enviadoSuporte && r.atendimento !== "Resolvido");
   const detail = selSup ? baseSup.find(r => r.id === selSup) : null;
   const qCounts = Object.fromEntries(QFILTERS.map(f => [f.id, applyQF(baseLog, f.id).length]));
-  const filteredLog = applySortRows(applyQF(baseLog, qf).filter(r => { const q = lSrch.toLowerCase(); return (!q || [r.nuvem, r.destinatario, r.transportadora, r.rastreio, r.status, r.motivo].some(v => (v || "").toLowerCase().includes(q))) && (lSt === "Todos" || r.status === lSt) && (lTr === "Todos" || r.transportadora === lTr) && (lUrg === "Todos" || r.urgencia === lUrg) && (lAc === "Todos" || r.acionar === lAc) && (lSitPrazo === "Todos" || (() => { const dt = parsePrazo(r.prazo); if (!dt) return false; const h = new Date(); h.setHours(0,0,0,0); const d = Math.ceil((dt - h) / 86400000); if (lSitPrazo === "Atraso") return d < 0; if (lSitPrazo === "No Prazo") return d === 0; if (lSitPrazo === "Antes do Prazo") return d > 0; return true; })())); }), sortCol, sortDir);
-  const totalPages = Math.max(1, Math.ceil(filteredLog.length / PAGE_SIZE));
+const filteredLog = applySortRows(
+  applyQF(baseLog, qf).filter(r => {
+    const q = lSrch.toLowerCase();
+    const statusMatch = (lSt === "Todos" || r.status === lSt);
+    const transpMatch = (lTr === "Todos" || r.transportadora === lTr);
+    const urgenciaMatch = (lUrg === "Todos" || r.urgencia === lUrg);
+    const acionarMatch = (lAc === "Todos" || r.acionar === lAc);
+    let prazoMatch = true;
+    if (lSitPrazo !== "Todos") {
+      const dt = parsePrazo(r.prazo);
+      if (!dt) prazoMatch = false;
+      else {
+        const h = new Date(); h.setHours(0,0,0,0);
+        const d = Math.ceil((dt - h) / 86400000);
+        if (lSitPrazo === "Atraso") prazoMatch = (d < 0);
+        else if (lSitPrazo === "No Prazo") prazoMatch = (d === 0);
+        else if (lSitPrazo === "Antes do Prazo") prazoMatch = (d > 0);
+        else prazoMatch = true;
+      }
+    }
+    const searchMatch = (!q || [r.nuvem, r.destinatario, r.transportadora, r.rastreio, r.status, r.motivo].some(v => (v || "").toLowerCase().includes(q)));
+    return searchMatch && statusMatch && transpMatch && urgenciaMatch && acionarMatch && prazoMatch;
+  }),
+  sortCol,
+  sortDir
+);  const totalPages = Math.max(1, Math.ceil(filteredLog.length / PAGE_SIZE));
   const safeP = Math.min(lPage, totalPages);
   const pagedLog = filteredLog.slice((safeP - 1) * PAGE_SIZE, safeP * PAGE_SIZE);
   const respOpts = uniq(baseSup.map(r => r.responsavel).filter(Boolean));
