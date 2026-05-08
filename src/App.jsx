@@ -127,6 +127,18 @@ const PERMS = {
   suporte:  {tabs:["suporte","devolucao","reenvio","arquivados"],canImport:false,canDelete:false,canClear:false,canSendSupport:false,canOperate:true},
   leitura:  {tabs:["dashboard","logistica","suporte","devolucao","reenvio","arquivados"],canImport:false,canDelete:false,canClear:false,canSendSupport:false,canOperate:false},
 }
+const DEV_STATUS = {
+  returning: "Material retornando para SG",
+  received: "Pedido recebido na SG",
+  done: "Finalizado",
+}
+const normalizeDevStatus = value => {
+  const v = norm(value)
+  if (!v || v.includes("aguardando") || v.includes("transporte") || v.includes("tratativa") || v.includes("cliente") || v.includes("produto")) return DEV_STATUS.returning
+  if (v.includes("recebido") || v.includes("cd")) return DEV_STATUS.received
+  if (v.includes("finaliz")) return DEV_STATUS.done
+  return value || DEV_STATUS.returning
+}
 
 // ─── BUG FIX #1: ALERTA_DIAS movido para ANTES de QFILTERS ───
 const ALERTA_DIAS = 7
@@ -395,7 +407,7 @@ function parseData(text) {
       entregueNoPrazo: noPrazo,
       alertaStatus: null,
       fluxoEspecial: "",
-      devolucaoStatus: "Aguardando tratativa",
+      devolucaoStatus: DEV_STATUS.returning,
       reenvioStatus: "Pendente",
       decisaoCliente: "",
       motivoDevolucao: "",
@@ -1207,11 +1219,12 @@ function OperacaoEspecialPanel({type, rows, perms, upd, onCreateReenvio, onResol
   const [search,setSearch]=useState("")
   const isDev = type==="devolucao"
   const cfg = isDev
-    ? {title:"Devolucao", empty:"Nenhum pedido em devolucao", statusKey:"devolucaoStatus", options:["Aguardando tratativa","Aguardando cliente","Em transporte reverso","Recebido no CD","Reenviar","Reembolsar"]}
+    ? {title:"Devolucao", empty:"Nenhum pedido em devolucao", statusKey:"devolucaoStatus", options:[DEV_STATUS.returning, DEV_STATUS.received, DEV_STATUS.done]}
     : {title:"Reenvio", empty:"Nenhum reenvio cadastrado", statusKey:"reenvioStatus", options:["Pendente","Pedido criado","Em separacao","Enviado","Concluido"]}
   const q = search.toLowerCase()
   const data = rows.filter(r=>!q||[r.nuvem,r.destinatario,r.rastreio,r.status,r.novoPedido,r.novaTransportadora,r.novoRastreio,r.materialReenvio,r.motivoDevolucao].some(v=>(v||"").toLowerCase().includes(q)))
-  const pendentes = rows.filter(r=>(r[cfg.statusKey]||cfg.options[0])===cfg.options[0]).length
+  const getStage = r => isDev ? normalizeDevStatus(r[cfg.statusKey]) : (r[cfg.statusKey]||cfg.options[0])
+  const pendentes = rows.filter(r=>getStage(r)===cfg.options[0]).length
   const emAndamento = Math.max(0, rows.length - pendentes)
   const inputStyle = {...getINP(),width:"100%",boxSizing:"border-box",fontSize:11,padding:"7px 9px"}
 
@@ -1253,7 +1266,7 @@ function OperacaoEspecialPanel({type, rows, perms, upd, onCreateReenvio, onResol
                 {!isDev&&<td style={{padding:"9px 10px"}}><input value={r.materialReenvio||""} onChange={e=>upd(r.id,{materialReenvio:e.target.value})} placeholder="Material enviado" style={inputStyle}/></td>}
                 <td style={{padding:"11px 14px",color:C.text2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={r.motivoDevolucao||r.motivo}>{r.motivoDevolucao||r.motivo||"—"}</td>
                 <td style={{padding:"9px 10px"}}>
-                  <select value={r[cfg.statusKey]||cfg.options[0]} onChange={e=>upd(r.id,{[cfg.statusKey]:e.target.value},{acao:`${cfg.title}: ${e.target.value}`})} disabled={!perms?.canOperate} style={inputStyle}>
+                  <select value={getStage(r)} onChange={e=>e.target.value===DEV_STATUS.done?onResolve(r.id):upd(r.id,{[cfg.statusKey]:e.target.value},{acao:`${cfg.title}: ${e.target.value}`})} disabled={!perms?.canOperate} style={inputStyle}>
                     {cfg.options.map(o=><option key={o}>{o}</option>)}
                   </select>
                 </td>
@@ -1546,13 +1559,13 @@ export default function App() {
   const handleCreateReenvio = id => {
     if (!perms?.canOperate) return
     const atual = rows.find(r=>r.id===id)
-    upd(id,{fluxoEspecial:"reenvio",decisaoCliente:"Reenvio",motivoDevolucao:atual?.motivoDevolucao||atual?.motivo||"",reenvioStatus:"Pendente",devolucaoStatus:"Reenviar",atendimento:"Em andamento"},{acao:"Cliente optou por reenvio",usuario:nomeAtendente})
+    upd(id,{fluxoEspecial:"reenvio",decisaoCliente:"Reenvio",motivoDevolucao:atual?.motivoDevolucao||atual?.motivo||"",reenvioStatus:"Pendente",devolucaoStatus:DEV_STATUS.done,atendimento:"Em andamento"},{acao:"Cliente optou por reenvio",usuario:nomeAtendente})
     setSelSup(null); addToast("Pedido movido para Reenvio")
   }
   const handleMarkDevolucao = id => {
     if (!perms?.canOperate) return
     const atual = rows.find(r=>r.id===id)
-    upd(id,{fluxoEspecial:"devolucao",decisaoCliente:"Estorno / devolucao",motivoDevolucao:atual?.motivoDevolucao||atual?.motivo||"",devolucaoStatus:"Aguardando produto",atendimento:"Em andamento"},{acao:"Cliente optou por estorno/devolucao do produto",usuario:nomeAtendente})
+    upd(id,{fluxoEspecial:"devolucao",decisaoCliente:"Estorno / devolucao",motivoDevolucao:atual?.motivoDevolucao||atual?.motivo||"",devolucaoStatus:DEV_STATUS.returning,atendimento:"Em andamento"},{acao:"Cliente optou por estorno/devolucao do produto",usuario:nomeAtendente})
     addToast("Pedido marcado em Devolucao")
   }
   const handleReturnLog = id => {if (!perms?.canOperate)return;upd(id,{enviadoSuporte:false,sentAt:null},{acao:"Devolvido à Logística",usuario:nomeAtendente});setSelSup(null)}
@@ -1657,7 +1670,7 @@ export default function App() {
   const stOpts=uniq(baseLog.map(r=>r.status)), trOpts=uniq(baseLog.map(r=>r.transportadora))
   const st={log:baseLog.length,alta:baseLog.filter(r=>r.urgencia==="Alta").length,acionar:baseLog.filter(r=>r.acionar==="Sim").length}
   const ss={total:baseSup.length,abertos:baseSup.filter(r=>r.atendimento==="Aberto").length,andamento:baseSup.filter(r=>r.atendimento==="Em andamento").length}
-  const devStats={total:baseDev.length,pendentes:baseDev.filter(r=>(r.devolucaoStatus||"Aguardando tratativa")==="Aguardando tratativa").length}
+  const devStats={total:baseDev.length,pendentes:baseDev.filter(r=>normalizeDevStatus(r.devolucaoStatus)===DEV_STATUS.returning).length}
   const reenvStats={total:baseReenvio.length,pendentes:baseReenvio.filter(r=>(r.reenvioStatus||"Pendente")==="Pendente").length}
   const arch=baseArch.length
 
