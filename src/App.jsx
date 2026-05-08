@@ -310,6 +310,26 @@ function timeOpen(sentAt) {
 }
 
 // BUG FIX #5 e #8: parseData corrigido — ix expandido + closing correto
+function shouldAutoSendSupport(status) {
+  const s = norm(status)
+  return s.includes("extravia") ||
+    s.includes("devolv") ||
+    s.includes("devolucao") ||
+    s.includes("recusa") ||
+    (s.includes("aguardando") && s.includes("retirada"))
+}
+
+function applyAutoSupport(row, ts=new Date().toLocaleString("pt-BR"), sentAt=new Date().toISOString()) {
+  if (!row || row.enviadoSuporte || row.atendimento==="Resolvido" || isEntregue(row.status) || !shouldAutoSendSupport(row.status)) return row
+  return {
+    ...row,
+    enviadoSuporte: true,
+    atendimento: "Aberto",
+    sentAt,
+    historico: [...(row.historico||[]), {acao:"Enviado automaticamente ao suporte por status critico", ts}],
+  }
+}
+
 function parseData(text) {
   const sep = text.includes("\t")?"\t":text.includes(";")?";":","
   const lines = text.trim().split("\n").filter(l=>l.trim())
@@ -368,7 +388,7 @@ function parseData(text) {
     const noPrazo = spVal!==null ? spVal
       : (dtEntregaDate && dtPrazoDate) ? dtEntregaDate <= dtPrazoDate
       : null
-    return {
+    const row = {
       id: Date.now()+i,
       nuvem: g(c,ix.nuvem), destinatario: g(c,ix.dest),
       transportadora: g(c,ix.transp), rastreio: g(c,ix.rastreio),
@@ -399,6 +419,7 @@ function parseData(text) {
       obs:"", historico: entregue?[{acao:"Arquivado automaticamente — entrega concluída",ts:new Date().toLocaleString("pt-BR")}]:[],
       responsavel:"", sentAt:null, chamado:"", isNew:true,
     }
+    return applyAutoSupport(row)
   }).filter(r=>{
     if (!r.nuvem&&!r.destinatario&&!r.nf) return false
     // transportadoras.ignore: "SP" (sigla de estado, não transportadora)
@@ -1445,6 +1466,12 @@ export default function App() {
           if (isEntregue(novo.status)&&!existing.enviadoSuporte&&existing.atendimento!=="Resolvido"){
             const idx=result.findIndex(r=>r.nuvem===novo.nuvem)
             if (idx>=0){result[idx]={...existing,email:novo.email||existing.email,atendimento:"Resolvido",enviadoSuporte:false,historico:[...existing.historico,{acao:"Arquivado automaticamente — entrega concluída",ts:new Date().toLocaleString("pt-BR")}]};updated++}
+          }else if (!existing.enviadoSuporte&&existing.atendimento!=="Resolvido"&&shouldAutoSendSupport(novo.status)){
+            const idx=result.findIndex(r=>r.nuvem===novo.nuvem)
+            if (idx>=0){
+              result[idx]=applyAutoSupport({...existing,email:novo.email||existing.email,status:novo.status,urgencia:novo.urgencia,acionar:novo.acionar,motivo:novo.motivo})
+              updated++
+            }
           }else{
             // Mesmo status: só atualiza email se vier preenchido
             if (novo.email && !existing.email) {
@@ -1459,6 +1486,8 @@ export default function App() {
             const alertaStatus=existing.enviadoSuporte&&norm(existing.status)!==norm(novo.status)?`Status atualizado: ${existing.status} → ${novo.status}`:existing.alertaStatus
             const spVal=parseStatusPrazo(novo.statusPrazoRaw)
             result[idx]={...novo,id:existing.id,obs:existing.obs,responsavel:existing.responsavel,chamado:existing.chamado,enviadoSuporte:existing.enviadoSuporte,atendimento:existing.enviadoSuporte?existing.atendimento:novo.atendimento,entregueNoPrazo:spVal!==null?spVal:novo.entregueNoPrazo,alertaStatus,historico:[...existing.historico,{acao:`Status atualizado: ${existing.status} → ${novo.status}`,ts:new Date().toLocaleString("pt-BR")}],isNew:true};updated++
+            if (existing.atendimento==="Resolvido") result[idx]={...result[idx],atendimento:"Resolvido",enviadoSuporte:false}
+            else result[idx]=applyAutoSupport(result[idx])
           }
         }
       }
