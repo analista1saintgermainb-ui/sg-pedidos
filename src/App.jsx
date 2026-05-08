@@ -1038,7 +1038,7 @@ function UsuariosPanel({token,addToast}) {
           <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
             <thead>
               <tr style={{background:C.brand}}>
-                {["Nome","Login","Perfil","Ações"].map(h=><th key={h} style={{padding:"13px 18px",textAlign:"left",color:C.gold,fontWeight:400,fontSize:9,letterSpacing:"0.14em",textTransform:"uppercase"}}>{h}</th>)}
+                {["Nome","Login","Perfil","Ações"].map(h=><th key={h} style={{padding:"13px 18px",textAlign:"left",color:C.white,fontWeight:600,fontSize:9,letterSpacing:"0.14em",textTransform:"uppercase"}}>{h}</th>)}
               </tr>
             </thead>
             <tbody>
@@ -1230,7 +1230,7 @@ function OperacaoEspecialPanel({type, rows, perms, upd, onCreateReenvio, onResol
             <col style={{width:150}}/><col style={{width:130}}/><col style={{width:210}}/>
           </colgroup>
           <thead>
-            <tr>{["Pedido","Cliente","Transportadora","Status origem",...(!isDev?["Novo pedido","Nova transp.","Novo rastreio","Material"]:[]),"Motivo","Etapa","Responsavel","Acoes"].map(h=><th key={h} style={{padding:"12px 14px",textAlign:"left",color:C.gold,fontWeight:400,fontSize:9,letterSpacing:"0.14em",textTransform:"uppercase",background:C.brand,whiteSpace:"nowrap"}}>{h}</th>)}</tr>
+            <tr>{["Pedido","Cliente","Transportadora","Status origem",...(!isDev?["Novo pedido","Nova transp.","Novo rastreio","Material"]:[]),"Motivo","Etapa","Responsavel","Acoes"].map(h=><th key={h} style={{padding:"12px 14px",textAlign:"left",color:C.white,fontWeight:600,fontSize:9,letterSpacing:"0.14em",textTransform:"uppercase",background:C.brand,whiteSpace:"nowrap"}}>{h}</th>)}</tr>
           </thead>
           <tbody>
             {data.length===0?<tr><td colSpan={isDev?8:12} style={{padding:34,textAlign:"center",color:C.text4}}>{cfg.empty}</td></tr>
@@ -1679,13 +1679,13 @@ export default function App() {
   if (!session) return <LoginScreen onLogin={handleLogin}/>
   if (loadingPerfil) return <div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",color:C.text4,fontSize:12,letterSpacing:"0.1em"}}>Carregando perfil...</div>
 
-  const showImp=(importing||rows.length===0)&&perms?.tabs.some(t=>["logistica","dashboard"].includes(t))
+  const showImp=importing&&perms?.tabs.some(t=>["logistica","dashboard"].includes(t))
   const pd=compact?5:9
   const PERFLABEL={admin:"Admin",logistica:"Logística",suporte:"Suporte",leitura:"Leitura"}
   const syncDot  = syncStatus==="error"?C.red:syncStatus==="saving"?C.gold:syncStatus==="saved"?"#27ae60":"#555"
   const syncText = syncStatus==="loading"?"Carregando...":syncStatus==="saving"?"Salvando...":syncStatus==="saved"?"Sincronizado ✓":syncStatus==="error"?"Erro":lastSync?`Sync em ${countdown}s`:""
   const TABS=[{key:"dashboard",label:"Dashboard",badge:null},{key:"logistica",label:"Logística",badge:st.acionar>0?st.acionar:null},{key:"suporte",label:"Suporte",badge:ss.abertos>0?ss.abertos:null},{key:"devolucao",label:"Devolução",badge:devStats.total>0?devStats.total:null},{key:"reenvio",label:"Reenvio",badge:reenvStats.pendentes>0?reenvStats.pendentes:null},{key:"arquivados",label:"Finalizados",badge:arch>0?arch:null},{key:"usuarios",label:"Usuários",badge:null}].filter(t=>perms?.tabs.includes(t.key))
-  const TH  = {padding:`${compact?8:11}px 14px`,textAlign:"left",color:C.gold,fontWeight:400,fontSize:9,letterSpacing:"0.14em",textTransform:"uppercase",borderBottom:`1px solid #2A2A2A`,whiteSpace:"nowrap",background:C.brand,position:"sticky",top:0,zIndex:5,cursor:"pointer"}
+  const TH  = {padding:`${compact?8:11}px 14px`,textAlign:"left",color:C.white,fontWeight:600,fontSize:9,letterSpacing:"0.14em",textTransform:"uppercase",borderBottom:`1px solid #2A2A2A`,whiteSpace:"nowrap",background:C.brand,position:"sticky",top:0,zIndex:5,cursor:"pointer"}
   const THF = {...TH,cursor:"default"}
 
   return (
@@ -1709,23 +1709,23 @@ export default function App() {
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           {perms?.canImport&&!showImp&&rows.length>0&&(
             <>
-              <button onClick={()=>setCompact(c=>!c)} style={{background:"transparent",border:`1px solid ${C.gold}44`,color:compact?C.gold:`${C.gold}88`,borderRadius:6,padding:"6px 12px",fontSize:10,cursor:"pointer",letterSpacing:"0.08em"}}>{compact?"⊞":"⊟"}</button>
-              <button onClick={()=>{const hf=lSrch||lSt!=="Todos"||lTr!=="Todos"||lUrg!=="Todos"||lAc!=="Todos";exportCSV(hf&&tab==="logistica"?filteredLog:rows)}} style={{background:"transparent",border:`1px solid #444`,color:"#888",borderRadius:6,padding:"6px 14px",fontSize:10,cursor:"pointer",letterSpacing:"0.06em"}}>↓ Exportar</button>
-              <button onClick={()=>setImporting(true)} style={{background:"transparent",border:`1px solid ${C.gold}`,color:C.gold,borderRadius:6,padding:"6px 14px",fontSize:10,cursor:"pointer",letterSpacing:"0.06em"}}>+ Importar</button>
+              <button onClick={()=>setCompact(c=>!c)} style={{background:"transparent",border:`1px solid #FFFFFF44`,color:compact?C.white:"#BDBDBD",borderRadius:6,padding:"6px 12px",fontSize:10,cursor:"pointer",letterSpacing:"0.08em"}}>{compact?"⊞":"⊟"}</button>
+              <button onClick={()=>{const hf=lSrch||lSt!=="Todos"||lTr!=="Todos"||lUrg!=="Todos"||lAc!=="Todos";exportCSV(hf&&tab==="logistica"?filteredLog:rows)}} style={{background:"transparent",border:`1px solid #FFFFFF33`,color:"#F7F6F1",borderRadius:6,padding:"6px 14px",fontSize:10,cursor:"pointer",letterSpacing:"0.06em"}}>↓ Exportar</button>
+              <button onClick={()=>setImporting(true)} style={{background:"transparent",border:`1px solid #FFFFFF66`,color:C.white,borderRadius:6,padding:"6px 14px",fontSize:10,cursor:"pointer",letterSpacing:"0.06em"}}>+ Importar</button>
             </>
           )}
-          <button onClick={()=>{const nd=!dark;applyTheme(nd);setDark(nd)}} title="Alternar modo escuro" style={{background:"transparent",border:`1px solid #333`,color:dark?C.gold:C.text3,borderRadius:6,padding:"6px 10px",fontSize:12,cursor:"pointer"}}>{dark?"☀":"🌙"}</button>
+          <button onClick={()=>{const nd=!dark;applyTheme(nd);setDark(nd)}} title="Alternar modo escuro" style={{background:"transparent",border:`1px solid #333`,color:dark?C.white:"#BDBDBD",borderRadius:6,padding:"6px 10px",fontSize:12,cursor:"pointer"}}>{dark?"☀":"🌙"}</button>
         {perms?.canClear&&rows.length>0&&(
-            <button onClick={handleClearAll} style={{background:"transparent",border:`1px solid #333`,color:"#555",borderRadius:6,padding:"6px 14px",fontSize:10,cursor:"pointer",letterSpacing:"0.06em"}}>
+            <button onClick={handleClearAll} style={{background:"transparent",border:`1px solid #FFFFFF33`,color:"#F7F6F1",borderRadius:6,padding:"6px 14px",fontSize:10,cursor:"pointer",letterSpacing:"0.06em"}}>
               Limpar tudo
             </button>
           )}
           <div style={{width:1,height:28,background:"#2A2A2A"}}/>
           <div style={{textAlign:"right"}}>
             <div style={{color:C.white,fontSize:11,letterSpacing:"0.02em"}}>{session.user?.email}</div>
-            <div style={{color:C.gold,fontSize:9,letterSpacing:"0.1em",textTransform:"uppercase"}}>{PERFLABEL[perfil]||perfil}</div>
+            <div style={{color:"#BDBDBD",fontSize:9,letterSpacing:"0.1em",textTransform:"uppercase"}}>{PERFLABEL[perfil]||perfil}</div>
           </div>
-          <button onClick={handleLogout} style={{background:"transparent",border:`1px solid #2A2A2A`,color:"#666",borderRadius:6,padding:"6px 12px",fontSize:10,cursor:"pointer",letterSpacing:"0.06em"}}>Sair</button>
+          <button onClick={handleLogout} style={{background:"transparent",border:`1px solid #FFFFFF33`,color:"#F7F6F1",borderRadius:6,padding:"6px 12px",fontSize:10,cursor:"pointer",letterSpacing:"0.06em"}}>Sair</button>
         </div>
         <input ref={fileRef} type="file" accept=".csv,.txt,.tsv,.xls,.xlsx" style={{display:"none"}} onChange={handleFile}/>
       </div>
@@ -2336,3 +2336,4 @@ export default function App() {
     </div>
   )
 }
+
