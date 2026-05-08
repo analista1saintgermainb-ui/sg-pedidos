@@ -59,14 +59,13 @@ const LOGIN_EMAIL_DOMAIN = "sg-pedidos.local"
 const SESSION_KEY = "sg_pedidos_session"
 const cleanLogin = value => String(value||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim().replace(/[^a-z0-9._-]/g,"")
 const authEmailFromLogin = value => {
-  const raw = String(value||"").trim().toLowerCase()
-  if (raw.includes("@")) return raw
-  const login = cleanLogin(raw)
+  const login = cleanLogin(value)
   return login ? `${login}@${LOGIN_EMAIL_DOMAIN}` : ""
 }
 const displayLogin = email => {
   const raw = String(email||"")
-  return raw.endsWith(`@${LOGIN_EMAIL_DOMAIN}`) ? raw.replace(`@${LOGIN_EMAIL_DOMAIN}`,"") : raw
+  if (raw.endsWith(`@${LOGIN_EMAIL_DOMAIN}`)) return raw.replace(`@${LOGIN_EMAIL_DOMAIN}`,"")
+  return cleanLogin(raw.split("@")[0])
 }
 
 async function signIn(login, password) {
@@ -965,7 +964,7 @@ function LoginScreen({onLogin}) {
         <form onSubmit={handle}>
           <div style={{marginBottom:20}}>
             <label style={{fontSize:9,letterSpacing:"0.14em",textTransform:"uppercase",color:C.text3,fontWeight:500,display:"block",marginBottom:7}}>Login</label>
-            <input value={login} onChange={e=>setLogin(e.target.value)} type="text" placeholder="seu login" required autoCapitalize="none" autoComplete="username" style={{...getINP(),width:"100%",boxSizing:"border-box",fontSize:13}}/>
+            <input value={login} onChange={e=>setLogin(cleanLogin(e.target.value))} type="text" placeholder="ex: rodrigo" required autoCapitalize="none" autoComplete="username" style={{...getINP(),width:"100%",boxSizing:"border-box",fontSize:13}}/>
           </div>
           <div style={{marginBottom:28}}>
             <label style={{fontSize:9,letterSpacing:"0.14em",textTransform:"uppercase",color:C.text3,fontWeight:500,display:"block",marginBottom:7}}>Senha</label>
@@ -1023,7 +1022,7 @@ function UsuariosPanel({token,addToast}) {
         <div style={{fontSize:9,letterSpacing:"0.14em",textTransform:"uppercase",color:C.text3,marginBottom:20,fontWeight:500}}>Adicionar usuário</div>
         <form onSubmit={handleCreate}>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:14}}>
-            {[["Nome","nome","text","Nome completo"],["Login","login","text","ex: rodrigo"],["Senha inicial","senha","password","Minimo 6 caracteres"]].map(([lbl,key,type,ph])=>(
+            {[["Nome","nome","text","Nome completo"],["Login","login","text","somente usuario, sem email"],["Senha inicial","senha","password","Minimo 6 caracteres"]].map(([lbl,key,type,ph])=>(
               <div key={key}>
                 <label style={{fontSize:9,letterSpacing:"0.12em",textTransform:"uppercase",color:C.text3,fontWeight:500,display:"block",marginBottom:6}}>{lbl}</label>
                 <input value={form[key]} onChange={e=>setForm(f=>({...f,[key]:key==="login"?cleanLogin(e.target.value):e.target.value}))} type={type} placeholder={ph} required={key!=="nome"} minLength={key==="senha"?6:undefined} autoCapitalize={key==="login"?"none":undefined} autoComplete={key==="login"?"username":undefined} style={{...getINP(),width:"100%",boxSizing:"border-box"}}/>
