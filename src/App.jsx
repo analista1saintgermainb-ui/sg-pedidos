@@ -74,6 +74,14 @@ async function signIn(login, password) {
   const r = await fetch(`${SUPA_URL}/auth/v1/token?grant_type=password`, { method:"POST", headers:SH, body:JSON.stringify({email,password}) })
   const d = await r.json(); if (!r.ok) throw new Error(d.error_description||d.msg||"Erro ao fazer login"); return d
 }
+async function refreshAuthSession(refreshToken) {
+  const r = await fetch(`${SUPA_URL}/auth/v1/token?grant_type=refresh_token`, { method:"POST", headers:SH, body:JSON.stringify({refresh_token:refreshToken}) })
+  const d = await r.json(); if (!r.ok) throw new Error(d.error_description||d.msg||"Sessao expirada"); return d
+}
+const isAuthExpiredError = err => {
+  const msg = String(err?.message||err||"")
+  return msg.includes("JWT expired") || msg.includes("PGRST303") || msg.includes("invalid JWT") || msg.includes("Sessao expirada")
+}
 async function signOut(token) { await fetch(`${SUPA_URL}/auth/v1/logout`,{method:"POST",headers:aSH(token)}) }
 async function createUser(email, password, token) {
   const r = await fetch("/api/create-user", {method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`},body:JSON.stringify({email,password})})
@@ -1313,21 +1321,47 @@ export default function App() {
     const id=Date.now(); setToasts(p=>[...p,{id,msg,type}]); setTimeout(()=>setToasts(p=>p.filter(t=>t.id!==id)),ms)
   },[])
 
+  const saveSession = useCallback(data => {
+    localStorage.setItem(SESSION_KEY, JSON.stringify(data))
+    setSession(data)
+    return data
+  },[])
+
+  const clearSession = useCallback(() => {
+    localStorage.removeItem(SESSION_KEY)
+    setSession(null); setPerfil(null); setRows([]); setTab(null)
+  },[])
+
+  const refreshStoredSession = useCallback(async data => {
+    if (!data?.refresh_token) throw new Error("Sessao expirada")
+    return saveSession(await refreshAuthSession(data.refresh_token))
+  },[saveSession])
+
   const loadUserProfile = useCallback(async data => {
     if (!data?.access_token) return
     setLoadingPerfil(true)
     try {
-      const r = await fetch(`${SUPA_URL}/rest/v1/usuarios?id=eq.${data.user.id}&select=*`,{headers:aSH(data.access_token)})
+      let current = data
+      let r = await fetch(`${SUPA_URL}/rest/v1/usuarios?id=eq.${current.user.id}&select=*`,{headers:aSH(current.access_token)})
+      if (!r.ok) {
+        const errText = await r.text()
+        if (!isAuthExpiredError(errText)) throw new Error(errText)
+        current = await refreshStoredSession(current)
+        r = await fetch(`${SUPA_URL}/rest/v1/usuarios?id=eq.${current.user.id}&select=*`,{headers:aSH(current.access_token)})
+        if (!r.ok) throw new Error(await r.text())
+      }
       const arr = await r.json(); const p = arr[0]?.perfil||"leitura"
-      setNomeAtendente(arr[0]?.nome||data.user?.email||"")
+      setNomeAtendente(arr[0]?.nome||current.user?.email||"")
       setPerfil(p); setTab(PERMS[p].tabs[0])
-    } catch(e) { setPerfil("leitura"); setTab("dashboard") }
+    } catch(e) {
+      if (isAuthExpiredError(e)) clearSession()
+      else { setPerfil("leitura"); setTab("dashboard") }
+    }
     setLoadingPerfil(false)
-  },[])
+  },[clearSession,refreshStoredSession])
 
   const handleLogin = async data => {
-    localStorage.setItem(SESSION_KEY, JSON.stringify(data))
-    setSession(data)
+    saveSession(data)
     await loadUserProfile(data)
   }
 
@@ -1337,8 +1371,7 @@ export default function App() {
 
   const handleLogout = async () => {
     if (token) await signOut(token)
-    localStorage.removeItem(SESSION_KEY)
-    setSession(null); setPerfil(null); setRows([]); setTab(null)
+    clearSession()
   }
   const perms = perfil?PERMS[perfil]:null
 
@@ -1362,11 +1395,15 @@ export default function App() {
       if (data.length>0) { setRows(fixRows(data)); setLastSync(new Date()) }
       setSyncStatus("idle"); setLoadingData(false)
     }).catch(e => {
+      if (isAuthExpiredError(e) && session?.refresh_token) {
+        refreshStoredSession(session).catch(()=>clearSession())
+        return
+      }
       setSyncStatus("error")
       addToast("Erro ao carregar: "+e.message,"error",8000)
       setLoadingData(false)
     })
-  },[token])
+  },[token,session,refreshStoredSession,clearSession,addToast])
 
   // BUG FIX #10: polling usava dbLoad (inexistente) — corrigido para dbLoadFast
   useEffect(()=>{
@@ -1390,12 +1427,14 @@ export default function App() {
           if (nc>0) addToast(`${nc} pedido${nc>1?"s":""} atualizado${nc>1?"s":""} por outro usuário`,"warn")
           setLastSync(new Date())
         }
-      } catch(e){}
+      } catch(e){
+        if (isAuthExpiredError(e) && session?.refresh_token) refreshStoredSession(session).catch(()=>clearSession())
+      }
     }
     const interval=setInterval(poll,10000)
     const cd=setInterval(()=>setCountdown(p=>p>0?p-1:10),1000)
     return ()=>{clearInterval(interval);clearInterval(cd)}
-  },[token,addToast])
+  },[token,addToast,session,refreshStoredSession,clearSession])
 
   useEffect(()=>{
     if (!token||rows.length===0) return
