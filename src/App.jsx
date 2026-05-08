@@ -1304,6 +1304,7 @@ export default function App() {
   const [paste,setPaste]=useState("")
   const [importing,setImporting]=useState(false)
   const [loadingData,setLoadingData]=useState(false)
+  const [initialDataLoaded,setInitialDataLoaded]=useState(false)
   const [compact,setCompact]=useState(false)
   const [navOpen,setNavOpen]=useState(false)
   const [dark,setDark]=useState(false)
@@ -1365,9 +1366,10 @@ export default function App() {
 
   // BUG FIX #9: useEffect de carga inicial completamente reescrito
   useEffect(()=>{
-    if (!token) return
+    if (!token) { setInitialDataLoaded(false); return }
     setSyncStatus("loading")
     setLoadingData(true)
+    setInitialDataLoaded(false)
 
     const fixRows = data => data.map(r=>({
       ...r, isNew:false,
@@ -1381,10 +1383,12 @@ export default function App() {
       setLoadingData(false)
     }).then(data => {
       if (data.length>0) { setRows(fixRows(data)); setLastSync(new Date()) }
+      setInitialDataLoaded(true)
       setSyncStatus("idle"); setLoadingData(false)
     }).catch(e => {
       setSyncStatus("error")
       addToast("Erro ao carregar: "+e.message,"error",8000)
+      setInitialDataLoaded(true)
       setLoadingData(false)
     })
   },[token])
@@ -1706,9 +1710,13 @@ export default function App() {
   const statusData = Object.entries(statusMap).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([name,value])=>({name,value}))
 
   if (!session) return <LoginScreen onLogin={handleLogin}/>
-  if (loadingPerfil) return <div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",color:C.text4,fontSize:12,letterSpacing:"0.1em"}}>Carregando perfil...</div>
+  if (loadingPerfil || !perfil) return (
+    <div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",background:C.brand,color:"#F7F6F1",fontSize:10,letterSpacing:"0.18em",textTransform:"uppercase"}}>
+      Carregando central
+    </div>
+  )
 
-  const showImp=(importing||rows.length===0)&&perms?.tabs.some(t=>["logistica","dashboard"].includes(t))
+  const showImp=(importing||(initialDataLoaded&&rows.length===0))&&perms?.tabs.some(t=>["logistica","dashboard"].includes(t))
   const pd=compact?5:9
   const PERFLABEL={admin:"Admin",logistica:"Logística",suporte:"Suporte",leitura:"Leitura"}
   const syncDot  = syncStatus==="error"?C.red:syncStatus==="saving"?C.gold:syncStatus==="saved"?"#27ae60":"#555"
