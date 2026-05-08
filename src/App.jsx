@@ -56,7 +56,8 @@ const SUPA_KEY     = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 const SH  = { apikey: SUPA_KEY, "Content-Type": "application/json" }
 const aSH = t => ({ ...SH, Authorization: `Bearer ${t}` })
 const LOGIN_EMAIL_DOMAIN = "sg-pedidos.local"
-const cleanLogin = value => norm(value).replace(/[^a-z0-9._-]/g,"")
+const SESSION_KEY = "sg_pedidos_session"
+const cleanLogin = value => String(value||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim().replace(/[^a-z0-9._-]/g,"")
 const authEmailFromLogin = value => {
   const raw = String(value||"").trim().toLowerCase()
   if (raw.includes("@")) return raw
@@ -593,7 +594,7 @@ const PROBLEMA_CONFIG = {
 // ─── Design Tokens para badges ───────────────────────────────
 const urgStyles = {
   Alta:  {bg:C.redSoft,  color:C.red,  bd:C.redBorder,  dot:"#e74c3c"},
-  Média: {bg:C.amberSoft,color:C.amber,bd:C.amberBorder, dot:C.gold},
+  Média: {bg:C.amberSoft,color:C.amber,bd:C.amberBorder, dot:"#F3D36B"},
   Baixa: {bg:C.greenSoft,color:C.green,bd:C.greenBorder, dot:"#27ae60"},
   "—":   {bg:C.creamDark,color:C.text3,bd:C.border,      dot:C.text4},
 }
@@ -1266,7 +1267,14 @@ function OperacaoEspecialPanel({type, rows, perms, upd, onCreateReenvio, onResol
 }
 
 export default function App() {
-  const [session,setSession]=useState(null)
+  const [session,setSession]=useState(()=>{
+    try {
+      const raw = localStorage.getItem(SESSION_KEY)
+      return raw ? JSON.parse(raw) : null
+    } catch {
+      return null
+    }
+  })
   const [perfil,setPerfil]=useState(null)
   const [nomeAtendente,setNomeAtendente]=useState("")
   const [loadingPerfil,setLoadingPerfil]=useState(false)
@@ -1305,8 +1313,9 @@ export default function App() {
     const id=Date.now(); setToasts(p=>[...p,{id,msg,type}]); setTimeout(()=>setToasts(p=>p.filter(t=>t.id!==id)),ms)
   },[])
 
-  const handleLogin = async data => {
-    setSession(data); setLoadingPerfil(true)
+  const loadUserProfile = useCallback(async data => {
+    if (!data?.access_token) return
+    setLoadingPerfil(true)
     try {
       const r = await fetch(`${SUPA_URL}/rest/v1/usuarios?id=eq.${data.user.id}&select=*`,{headers:aSH(data.access_token)})
       const arr = await r.json(); const p = arr[0]?.perfil||"leitura"
@@ -1314,8 +1323,23 @@ export default function App() {
       setPerfil(p); setTab(PERMS[p].tabs[0])
     } catch(e) { setPerfil("leitura"); setTab("dashboard") }
     setLoadingPerfil(false)
+  },[])
+
+  const handleLogin = async data => {
+    localStorage.setItem(SESSION_KEY, JSON.stringify(data))
+    setSession(data)
+    await loadUserProfile(data)
   }
-  const handleLogout = async () => { await signOut(token); setSession(null); setPerfil(null); setRows([]); setTab(null) }
+
+  useEffect(()=>{
+    if (session && !perfil && !loadingPerfil) loadUserProfile(session)
+  },[session,perfil,loadingPerfil,loadUserProfile])
+
+  const handleLogout = async () => {
+    if (token) await signOut(token)
+    localStorage.removeItem(SESSION_KEY)
+    setSession(null); setPerfil(null); setRows([]); setTab(null)
+  }
   const perms = perfil?PERMS[perfil]:null
 
   // BUG FIX #9: useEffect de carga inicial completamente reescrito
@@ -1758,7 +1782,7 @@ export default function App() {
       )}
 
       {/* ── USUÁRIOS ── */}
-      {tab==="usuarios"&&perfil==="admin"&&<UsuariosPanel token={token} addToast={addToast} bxToken={bxToken} setBxToken={setBxToken}/> }
+      {tab==="usuarios"&&perfil==="admin"&&<UsuariosPanel token={token} addToast={addToast}/> }
 
       {/* ── DASHBOARD ── */}
       {tab==="dashboard"&&!showImp&&(
