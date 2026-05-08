@@ -334,6 +334,22 @@ function calcAcionar(urg, status) {
   return "Não"
 }
 
+const VALID_STATUS_TERMS = [
+  "problema entrega","extraviado","extravio","apreendido","aguardando retirada",
+  "em transito","transito","estornado","expedido","saiu para entrega",
+  "triado","entregue","devolvido","devolucao","recusa","falha","tentativa",
+  "postado","coletado","processando","pendente","retido","finalizado",
+]
+function isValidStatusValue(value) {
+  const raw = String(value||"").trim()
+  if (!raw) return false
+  if (/^\(?\d{2}\)?\s?\d{4,5}-?\d{4}$/.test(raw)) return false
+  if (/^[A-Z]{2}$/i.test(raw)) return false
+  if (/^[A-Z]{2,}\d{5,}[A-Z0-9]*$/i.test(raw)) return false
+  const s = norm(raw).replace(/[_-]+/g," ")
+  return VALID_STATUS_TERMS.some(term => s.includes(term))
+}
+
 function slaInfo(prazo) {
   const dt = parsePrazo(prazo); if (!dt) return null
   const h = new Date(); h.setHours(0,0,0,0)
@@ -397,7 +413,9 @@ function parseData(text) {
   }
   return data.map((line,i) => {
     const c = line.split(sep).map(v=>v.trim().replace(/^["']|["']$/g,""))
-    const status = g(c,ix.status), prazo = g(c,ix.prazo)
+    const rawStatus = g(c,ix.status)
+    const status = isValidStatusValue(rawStatus) ? rawStatus : (c.find((v,idx)=>idx!==ix.status&&isValidStatusValue(v)) || "")
+    const prazo = g(c,ix.prazo)
     const urg = calcUrg(prazo,status)
     const entregue = isEntregue(status)
     const autoSupport = shouldAutoSupport(status) && !entregue
@@ -1372,6 +1390,7 @@ export default function App() {
   const [lSrch,setLSrch]=useState(""); const [lSt,setLSt]=useState("Todos")
   const [lTr,setLTr]=useState("Todos"); const [lUrg,setLUrg]=useState("Todos")
   const [lAc,setLAc]=useState("Todos"); const [lSitPrazo,setLSitPrazo]=useState("Todos"); const [qf,setQf]=useState("todos")
+  const [logMode,setLogMode]=useState("atencao")
   const [lShowFilters,setLShowFilters]=useState(false)
   const [sResp,setSResp]=useState("Todos"); const [sShowFilters,setSShowFilters]=useState(false)
   const [lPage,setLPage]=useState(1)
@@ -1845,12 +1864,20 @@ export default function App() {
   const baseDev  = rows.filter(r=>r.atendimento!=="Resolvido"&&r.fluxoEspecial!=="reenvio"&&(r.fluxoEspecial==="devolucao"||classificarProblema(r)==="DEVOLUCAO"))
   const baseReenvio = rows.filter(r=>r.atendimento!=="Resolvido"&&r.fluxoEspecial==="reenvio")
   const baseArch = rows.filter(r=>r.atendimento==="Resolvido")
-  const prioridadeRows = baseLog.filter(r=>prioridadeOperacional(r).level!=="normal")
-  const criticaRows = baseLog.filter(r=>prioridadeOperacional(r).level==="critica")
+  const isLogAttention = r => {
+    const dt = parsePrazo(r.prazo)
+    const h = new Date(); h.setHours(0,0,0,0)
+    return prioridadeOperacional(r).level!=="normal" || r.urgencia==="Alta" || ["Sim","Avaliar"].includes(r.acionar) || (dt&&dt<h&&!isEntregue(r.status)) || (diasSemMov(r.ultimaMov)!==null&&diasSemMov(r.ultimaMov)>=ALERTA_DIAS)
+  }
+  const logAtencaoRows = baseLog.filter(isLogAttention)
+  const logViagemRows = baseLog.filter(r=>!isLogAttention(r))
+  const visibleLogBase = logMode==="viagem" ? logViagemRows : logAtencaoRows
+  const prioridadeRows = logAtencaoRows.filter(r=>prioridadeOperacional(r).level!=="normal")
+  const criticaRows = logAtencaoRows.filter(r=>prioridadeOperacional(r).level==="critica")
   const detail   = selSup?baseSup.find(r=>r.id===selSup):null
   const logDetail = logDetailId?rows.find(r=>r.id===logDetailId):null
-  const qCounts  = Object.fromEntries(QFILTERS.map(f=>[f.id,applyQF(baseLog,f.id).length]))
-  const filteredLog = applySortRows(applyQF(baseLog,qf).filter(r=>{
+  const qCounts  = Object.fromEntries(QFILTERS.map(f=>[f.id,applyQF(visibleLogBase,f.id).length]))
+  const filteredLog = applySortRows(applyQF(visibleLogBase,qf).filter(r=>{
     const q=lSrch.toLowerCase()
     return (!q||[r.nuvem,r.destinatario,r.transportadora,r.rastreio,r.status,r.motivo].some(v=>(v||"").toLowerCase().includes(q)))
       &&(lSt==="Todos"||r.status===lSt)&&(lTr==="Todos"||r.transportadora===lTr)
@@ -2168,13 +2195,24 @@ export default function App() {
             <KpiCard label="CrÃ­ticos agora" val={criticaRows.length} accent={criticaRows.length>0}/>
             <KpiCard label="Acionar suporte" val={st.acionar} accent={st.acionar>0}/>
           </div>
-          {prioridadeRows.length>0&&(
+          {logMode==="atencao"&&prioridadeRows.length>0&&(
             <div style={{background:C.brand,border:`1px solid ${C.brand}`,borderLeft:`4px solid ${C.red}`,color:C.white,padding:"12px 16px",marginBottom:14,display:"flex",alignItems:"center",gap:12,boxShadow:shadow.md}}>
               <div style={{fontSize:11,fontWeight:800,textTransform:"uppercase"}}>{prioridadeRows.length} pedidos exigem tratativa</div>
               <div style={{fontSize:11,color:"#BDBDBD",flex:1}}>Prioridade por prazo vencido, extravio, devolucao, urgencia alta ou falta de movimentacao.</div>
               <button onClick={()=>{setQf("urgente");clearSel()}} style={{background:C.white,border:"none",color:C.brand,borderRadius:4,padding:"7px 12px",fontSize:10,fontWeight:800,cursor:"pointer"}}>Ver urgentes</button>
             </div>
           )}
+          <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+            {[
+              {id:"atencao",label:"Atenção do time",count:logAtencaoRows.length},
+              {id:"viagem",label:"Em viagem / no prazo",count:logViagemRows.length},
+            ].map(opt=>(
+              <button key={opt.id} onClick={()=>{setLogMode(opt.id);setQf("todos");clearSel()}}
+                style={{background:logMode===opt.id?C.brand:C.white,border:`1px solid ${logMode===opt.id?C.brand:C.border}`,color:logMode===opt.id?C.white:C.text2,borderRadius:8,padding:"9px 14px",fontSize:11,cursor:"pointer",fontWeight:800,letterSpacing:"0.04em",boxShadow:shadow.sm}}>
+                {opt.label} ({opt.count})
+              </button>
+            ))}
+          </div>
           <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
             {QFILTERS.map(f=>(
               <button key={f.id} onClick={()=>{setQf(f.id);clearSel()}}
