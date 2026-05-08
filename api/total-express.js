@@ -1,6 +1,6 @@
 const TRACKING_URL =
   process.env.TOTAL_EXPRESS_TRACKING_URL ||
-  "https://apis.totalexpress.com.br/ics-tracking-encomenda-lv/v1/tracking"
+  "https://apis.totalexpress.com.br/ics-tracking-encomenda-lv/v1/tracking/total"
 const TICKET_URL =
   process.env.TOTAL_EXPRESS_TICKET_URL ||
   "https://apis.totalexpress.com.br/ics-ticket-lv/v1/ticket"
@@ -23,6 +23,13 @@ function totalHeaders() {
   const customValue = process.env.TOTAL_EXPRESS_AUTH_VALUE
   if (customHeader && customValue) {
     headers[customHeader] = customValue
+    return headers
+  }
+
+  const username = process.env.TOTAL_EXPRESS_USERNAME
+  const password = process.env.TOTAL_EXPRESS_PASSWORD
+  if (username && password) {
+    headers.Authorization = `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`
     return headers
   }
 
@@ -71,7 +78,14 @@ async function requireSession(req, allowedProfiles = ["admin", "logistica", "sup
 
 function normalizeTrackingResponse(body) {
   const page = body?.data?.data && Array.isArray(body.data.data) ? body.data : body
-  const items = Array.isArray(page?.data) ? page.data : []
+  const dataNode = page?.data
+  const items = Array.isArray(dataNode)
+    ? dataNode
+    : Array.isArray(dataNode?.hawbs)
+      ? dataNode.hawbs
+      : Array.isArray(page?.hawbs)
+        ? page.hawbs
+        : []
   return {
     items,
     currentPage: page?.currentPage ?? page?.current_page ?? 1,
@@ -128,13 +142,19 @@ async function forwardJson(url, payload) {
   return { resp, data }
 }
 
+function totalTrackingUrl(page) {
+  const base = TRACKING_URL.replace(/\/$/, "")
+  const endpoint = /\/tracking$/i.test(base) ? `${base}/total` : base
+  return `${endpoint}?page=${page}`
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") return json(res, 405, { error: "Metodo nao permitido" })
 
   const session = await requireSession(req)
   if (!session.ok) return json(res, session.status, { error: session.error })
 
-  if (!process.env.TOTAL_EXPRESS_TOKEN && !process.env.TOTAL_EXPRESS_AUTH_VALUE) {
+  if (!process.env.TOTAL_EXPRESS_TOKEN && !process.env.TOTAL_EXPRESS_AUTH_VALUE && !(process.env.TOTAL_EXPRESS_USERNAME && process.env.TOTAL_EXPRESS_PASSWORD)) {
     return json(res, 500, { error: "Credencial Total Express ausente no servidor" })
   }
 
@@ -159,7 +179,7 @@ export default async function handler(req, res) {
       }
 
       const page = Math.max(1, toInt(body.page) || 1)
-      const { resp, data } = await forwardJson(`${TRACKING_URL}?page=${page}`, payload)
+      const { resp, data } = await forwardJson(totalTrackingUrl(page), payload)
       return json(res, resp.status, resp.ok ? normalizeTrackingResponse(data) : data)
     }
 

@@ -578,7 +578,15 @@ function isCorreios(transportadora) {
   return norm(transportadora).includes("correio")
 }
 function latestTotalTracking(item) {
-  const events = Array.isArray(item?.tracking) ? item.tracking : []
+  const events = Array.isArray(item?.tracking)
+    ? item.tracking
+    : Array.isArray(item?.historico)
+      ? item.historico.map(e => ({
+          data: e?.dataHoraEvento || e?.data || "",
+          descricao: e?.descricaoEvento || e?.descricao || "",
+          local: e?.local || e?.hubLastMile || "",
+        }))
+      : []
   return events
     .filter(e => e?.data || e?.descricao)
     .sort((a,b)=>String(b.data||"").localeCompare(String(a.data||"")))[0] || null
@@ -591,15 +599,16 @@ function totalExpressPayloadForOrder(r) {
 }
 function totalExpressUpdateFromItem(item) {
   const last = latestTotalTracking(item)
-  const status = last?.descricao || ""
-  const prazo = item?.previsaoEntregaAtualizada || item?.previsaoEntrega || ""
+  const baixa = Array.isArray(item?.baixa) ? item.baixa[0] : null
+  const status = baixa?.descricaoEvento || last?.descricao || ""
+  const prazo = item?.previsaoEntregaAtualizada || item?.previsaoEntrega || item?.dataSla || item?.dataVencimento || ""
   const proof = item?.dadosRecebedor?.comprovanteEntrega?.urlArquivo || ""
   const urgencia = calcUrg(prazo, status)
   return {
     rastreio: item?.awb || item?.codigoBarra || "",
     status,
     prazo,
-    ultimaMov: last?.data || "",
+    ultimaMov: baixa?.dataHoraEvento || last?.data || "",
     motivo: calcMotivo(status),
     urgencia,
     acionar: calcAcionar(urgencia, status),
