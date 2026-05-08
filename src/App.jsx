@@ -92,6 +92,11 @@ async function totalExpressRequest(payload, token) {
   if (!r.ok) throw new Error(d.error||d.message||d.descricao||"Erro Total Express")
   return d
 }
+const chunk = (arr, size=50) => {
+  const out = []
+  for (let i=0; i<arr.length; i+=size) out.push(arr.slice(i,i+size))
+  return out
+}
 async function correiosRequest(payload, token) {
   const r = await fetch("/api/correios", {method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`},body:JSON.stringify(payload)})
   const d = await r.json().catch(()=>({}))
@@ -870,7 +875,7 @@ function buildMailto(r, nomeAtendente) {
 }
 
 // AcoesRapidas: botões de ação com feedback visual de loading
-function AcoesRapidas({r, perms, nomeAtendente, onNotificar, onAcionarTransp, onReenvio, onResolver, onDevolver, onTotalTracking, onTotalTicket}) {
+function AcoesRapidas({r, perms, nomeAtendente, onNotificar, onAcionarTransp, onReenvio, onResolver, onDevolver, onTotalTracking, onTotalTicket, onError}) {
   const [loading, setLoading] = useState(null)
   const transpUrl = getTranspLink(r.transportadora)
   const mailtoUrl = buildMailto(r, nomeAtendente)
@@ -878,7 +883,14 @@ function AcoesRapidas({r, perms, nomeAtendente, onNotificar, onAcionarTransp, on
   const isTotal   = isTotalExpress(r.transportadora)
 
   const act = (key, fn) => async () => {
-    setLoading(key); try { await fn() } finally { setLoading(null) }
+    setLoading(key)
+    try {
+      await fn()
+    } catch (error) {
+      onError?.(error?.message || "Erro ao executar acao")
+    } finally {
+      setLoading(null)
+    }
   }
 
   if (!perms?.canOperate) return null
@@ -915,7 +927,7 @@ function AcoesRapidas({r, perms, nomeAtendente, onNotificar, onAcionarTransp, on
           {temEmail?`Canal: ${r.email}`:"Canal: Zendesk / email pendente"} · {r.transportadora||"Transportadora nao informada"}
         </div>
       </div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:8}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:8}}>
         {temEmail ? (
           <a href={mailtoUrl}
             onClick={()=>{ onNotificar() }}
@@ -933,7 +945,10 @@ function AcoesRapidas({r, perms, nomeAtendente, onNotificar, onAcionarTransp, on
           </button>
         )}
         {isTotal
-          ? btn("texTicket","Acionar Total Express",{background:C.blueSoft,color:C.blue,border:`1px solid ${C.blueBorder}`},act("texTicket", onTotalTicket))
+          ? <>
+              {btn("texTrack","Atualizar rastreio",{background:C.white,color:C.blue,border:`1px solid ${C.blueBorder}`},act("texTrack", onTotalTracking))}
+              {btn("texTicket","Acionar Total Express",{background:C.blueSoft,color:C.blue,border:`1px solid ${C.blueBorder}`},act("texTicket", onTotalTicket))}
+            </>
           : btn("transp",`Acionar ${r.transportadora||"Transportadora"}`,{background:C.blueSoft,color:C.blue,border:`1px solid ${C.blueBorder}`},async()=>{
               setLoading("transp")
               try { await onAcionarTransp() } finally { setLoading(null) }
@@ -1360,7 +1375,8 @@ export default function App() {
   const [lastSync,setLastSync]=useState(null)
   const [countdown,setCountdown]=useState(10)
   const [correiosSyncing,setCorreiosSyncing]=useState(false)
-  const saveTimer=useRef(null); const fileRef=useRef(); const correiosSyncingRef=useRef(false)
+  const [totalAutoSyncing,setTotalAutoSyncing]=useState(false)
+  const saveTimer=useRef(null); const fileRef=useRef(); const correiosSyncingRef=useRef(false); const totalAutoSyncingRef=useRef(false)
   const token = session?.access_token
 
   const addToast = useCallback((msg,type="ok",ms=4000)=>{
@@ -1652,6 +1668,92 @@ export default function App() {
     upd(id,{chamado:ticketId?`Total #${ticketId}`:(atual.chamado||"Ticket Total aberto"),totalExpressTicketId:ticketId},{acao:`Ticket Total Express aberto${ticketId?`: ${ticketId}`:""}`,usuario:nomeAtendente})
     addToast(ticketId?`Ticket Total #${ticketId} aberto`:"Ticket Total Express aberto")
   }
+  const syncTotalExpressOrders = useCallback(async ({silent=false, force=false}={}) => {
+    if (!token || !perms?.canOperate || totalAutoSyncingRef.current) return
+    const now = Date.now()
+    const last = Number(localStorage.getItem("totalExpressAutoSyncAt") || 0)
+    if (!force && now - last < 25 * 60 * 1000) return
+
+    const targets = rows.filter(r=>isTotalExpress(r.transportadora)&&r.atendimento!=="Resolvido"&&(r.rastreio||r.nuvem||r.nf))
+    if (!targets.length) {
+      if (!silent) addToast("Nenhum pedido Total Express ativo para atualizar","warn")
+      return
+    }
+
+    totalAutoSyncingRef.current = true
+    setTotalAutoSyncing(true)
+    try {
+      const byKey = new Map()
+      targets.forEach(r=>{
+        if (r.rastreio) byKey.set(`awb:${String(r.rastreio).trim().toUpperCase()}`, r.id)
+        if (r.nuvem) byKey.set(`pedido:${String(r.nuvem).trim().toUpperCase()}`, r.id)
+        if (r.nf) byKey.set(`nf:${String(r.nf).trim().toUpperCase()}`, r.id)
+      })
+
+      const awbs = Array.from(new Set(targets.map(r=>String(r.rastreio||"").trim()).filter(Boolean)))
+      const pedidos = Array.from(new Set(targets.filter(r=>!r.rastreio).map(r=>String(r.nuvem||"").trim()).filter(Boolean)))
+      const notasFiscais = Array.from(new Set(targets.filter(r=>!r.rastreio&&!r.nuvem).map(r=>String(r.nf||"").trim()).filter(Boolean)))
+      const requests = [
+        ...chunk(awbs).map(part=>({awbs:part})),
+        ...chunk(pedidos).map(part=>({pedidos:part})),
+        ...chunk(notasFiscais).map(part=>({notasFiscais:part})),
+      ]
+
+      const updates = new Map()
+      for (const payload of requests) {
+        const data = await totalExpressRequest({action:"tracking",transportadora:"Total Express",...payload,comprovanteEntrega:true}, token)
+        for (const item of data.items || []) {
+          const keys = [
+            item?.awb && `awb:${String(item.awb).trim().toUpperCase()}`,
+            item?.codigoBarra && `awb:${String(item.codigoBarra).trim().toUpperCase()}`,
+            item?.pedido && `pedido:${String(item.pedido).trim().toUpperCase()}`,
+            item?.notaFiscal && `nf:${String(item.notaFiscal).trim().toUpperCase()}`,
+            item?.nota && `nf:${String(item.nota).trim().toUpperCase()}`,
+          ].filter(Boolean)
+          const id = keys.map(k=>byKey.get(k)).find(Boolean)
+          if (id) updates.set(id, item)
+        }
+      }
+
+      let changed = 0
+      const ts = new Date().toLocaleString("pt-BR")
+      setRows(prev=>prev.map(r=>{
+        const item = updates.get(r.id)
+        if (!item) return r
+        const ch = totalExpressUpdateFromItem(item)
+        Object.keys(ch).forEach(k=>{ if (ch[k]==="" || ch[k]===undefined || ch[k]===null) delete ch[k] })
+        const statusChanged = ch.status && norm(ch.status)!==norm(r.status)
+        const movChanged = ch.ultimaMov && String(ch.ultimaMov)!==String(r.ultimaMov||"")
+        if (!statusChanged && !movChanged) return r
+        changed++
+        const entregue = isEntregue(ch.status)
+        return {
+          ...r,
+          ...ch,
+          atendimento: entregue ? "Resolvido" : r.atendimento,
+          enviadoSuporte: entregue ? false : r.enviadoSuporte,
+          historico:[...(r.historico||[]),{acao:`Total Express auto: ${r.status||"-"} -> ${ch.status||"sem nova ocorrencia"}`,ts,usuario:"Sistema"}],
+          isNew:true,
+        }
+      }))
+      localStorage.setItem("totalExpressAutoSyncAt", String(now))
+      if (!silent || changed>0) addToast(`${changed} pedido${changed===1?"":"s"} Total Express atualizado${changed===1?"":"s"}`, changed>0?"ok":"warn",6000)
+    } catch(error) {
+      if (!silent) addToast("Erro Total Express: "+(error?.message||"falha na consulta"),"error",8000)
+    } finally {
+      totalAutoSyncingRef.current = false
+      setTotalAutoSyncing(false)
+    }
+  },[token,perms,rows,addToast])
+
+  useEffect(()=>{
+    if (!token || !perms?.canOperate) return
+    const hasTotal = rows.some(r=>isTotalExpress(r.transportadora)&&r.atendimento!=="Resolvido"&&(r.rastreio||r.nuvem||r.nf))
+    if (!hasTotal) return
+    const first = setTimeout(()=>syncTotalExpressOrders({silent:true}), 10000)
+    const interval = setInterval(()=>syncTotalExpressOrders({silent:true}), 30 * 60 * 1000)
+    return ()=>{clearTimeout(first); clearInterval(interval)}
+  },[token,perms,rows.length,syncTotalExpressOrders])
   const syncCorreiosOrders = useCallback(async ({silent=false}={}) => {
     if (!token || !perms?.canOperate || correiosSyncingRef.current) return
     const targets = rows.filter(r=>isCorreios(r.transportadora)&&r.rastreio&&r.atendimento!=="Resolvido")
@@ -2257,6 +2359,7 @@ export default function App() {
                   onDevolver={()=>handleReturnLog(detail.id)}
                   onTotalTracking={()=>handleTotalExpressTracking(detail.id)}
                   onTotalTicket={()=>handleTotalExpressTicket(detail.id)}
+                  onError={msg=>addToast(msg,"error",8000)}
                 />
               </div>
 
