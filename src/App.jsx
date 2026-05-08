@@ -1341,6 +1341,7 @@ export default function App() {
   const [sSrch,setSSrch]=useState(""); const [sAtend,setSAtend]=useState("Todos")
   const [sUrg,setSUrg]=useState("Todos")
   const [selSup,setSelSup]=useState(null)
+  const [logDetailId,setLogDetailId]=useState(null)
   const [supView,setSupView]=useState('lista') // 'lista' | 'kanban'
   const [selSupIds,setSelSupIds]=useState(new Set())
   const [openHist,setOpenHist]=useState(false)
@@ -1710,6 +1711,7 @@ export default function App() {
   const prioridadeRows = baseLog.filter(r=>prioridadeOperacional(r).level!=="normal")
   const criticaRows = baseLog.filter(r=>prioridadeOperacional(r).level==="critica")
   const detail   = selSup?baseSup.find(r=>r.id===selSup):null
+  const logDetail = logDetailId?rows.find(r=>r.id===logDetailId):null
   const qCounts  = Object.fromEntries(QFILTERS.map(f=>[f.id,applyQF(baseLog,f.id).length]))
   const filteredLog = applySortRows(applyQF(baseLog,qf).filter(r=>{
     const q=lSrch.toLowerCase()
@@ -2065,7 +2067,7 @@ export default function App() {
             </div>
           )}
           <div style={{overflowX:"auto",overflowY:"auto",maxHeight:"54vh",borderRadius:12,border:`1px solid ${C.border}`,boxShadow:shadow.sm}}>
-            <table style={{width:"100%",borderCollapse:"collapse",fontSize:compact?11:12,tableLayout:"fixed",minWidth:1100}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:compact?11:12,tableLayout:"fixed",minWidth:1200}}>
               <colgroup>
                 <col style={{width:36}}/>
                 <col style={{width:92}}/>
@@ -2076,7 +2078,7 @@ export default function App() {
                 <col style={{width:130}}/>
                 <col style={{width:80}}/>
                 <col style={{width:145}}/>
-                <col style={{width:118}}/>
+                <col style={{width:210}}/>
                 <col style={{width:36}}/>
               </colgroup>
               <thead>
@@ -2109,6 +2111,7 @@ export default function App() {
                     <td style={{padding:`${pd}px 14px`}}><SemMovBadge ultimaMov={r.ultimaMov}/></td>
                     <td style={{padding:`${pd}px 8px`}}>{perms?.canSendSupport&&(
                       <div style={{display:"flex",gap:4}}>
+                        <button onClick={()=>setLogDetailId(r.id)} style={{flex:1,background:C.brand,border:`1px solid ${C.brand}`,color:C.white,borderRadius:6,padding:"4px 6px",fontSize:9,cursor:"pointer",fontWeight:600,whiteSpace:"nowrap"}}>Detalhes</button>
                         <button onClick={()=>upd(r.id,{enviadoSuporte:true,atendimento:"Aberto",sentAt:new Date().toISOString()},{acao:"Enviado ao suporte"})} style={{flex:1,background:C.cream,border:`1px solid ${C.border}`,color:C.text2,borderRadius:6,padding:"4px 6px",fontSize:9,cursor:"pointer",fontWeight:500,whiteSpace:"nowrap"}}>Suporte →</button>
                         {perms?.canOperate&&<button onClick={()=>handleArchiveFromLog(r.id)} style={{flex:1,background:C.greenSoft,border:`1px solid ${C.greenBorder}`,color:C.green,borderRadius:6,padding:"4px 6px",fontSize:9,cursor:"pointer",fontWeight:600,whiteSpace:"nowrap"}}>✓ Arq.</button>}
                       </div>
@@ -2448,6 +2451,42 @@ export default function App() {
               })()}
             </div>
           )}
+        </div>
+      )}
+
+      {logDetail&&(
+        <div onClick={()=>setLogDetailId(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.42)",zIndex:50,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+          <div onClick={e=>e.stopPropagation()} style={{width:"min(620px,100%)",background:C.white,border:`1px solid ${C.border}`,borderRadius:12,boxShadow:shadow.lg,overflow:"hidden"}}>
+            <div style={{background:C.brand,color:C.white,padding:"16px 18px",display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:16}}>
+              <div>
+                <div style={{fontSize:8,letterSpacing:"0.18em",textTransform:"uppercase",color:"#BDBDBD",fontWeight:800,marginBottom:4}}>Detalhes logísticos</div>
+                <div style={{fontSize:20,fontWeight:800,lineHeight:1.1}}>{logDetail.destinatario||"Cliente não informado"}</div>
+                <div style={{fontSize:11,color:"#D8D8D8",marginTop:4}}>Pedido #{logDetail.nuvem||"—"}</div>
+              </div>
+              <button onClick={()=>setLogDetailId(null)} style={{background:"transparent",border:`1px solid #FFFFFF44`,color:C.white,borderRadius:6,width:32,height:32,cursor:"pointer",fontSize:16}}>×</button>
+            </div>
+            <div style={{padding:18,display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+              {[
+                ["Transportadora",logDetail.transportadora||"—"],
+                ["Código de rastreio",logDetail.rastreio||"—"],
+                ["Status",logDetail.status||"—"],
+                ["Prazo logístico",logDetail.prazo||"—"],
+                ["Última movimentação",logDetail.ultimaMov||"—"],
+                ["Urgência",logDetail.urgencia||"—"],
+                ["Nota fiscal",logDetail.nf||"—"],
+                ["Motivo",logDetail.motivo||"—"],
+              ].map(([label,value])=>(
+                <div key={label} style={{background:C.cream,border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",minHeight:52}}>
+                  <div style={{fontSize:8,color:C.text4,textTransform:"uppercase",letterSpacing:"0.14em",fontWeight:800,marginBottom:5}}>{label}</div>
+                  <div style={{fontSize:label==="Código de rastreio"?15:12,color:C.text1,fontWeight:label==="Código de rastreio"?800:500,fontFamily:label==="Código de rastreio"?"monospace":"inherit",wordBreak:"break-word"}}>{value}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{display:"flex",gap:8,justifyContent:"flex-end",padding:"0 18px 18px"}}>
+              {logDetail.rastreio&&<button onClick={()=>navigator.clipboard?.writeText(logDetail.rastreio)} style={{background:C.cream,border:`1px solid ${C.border}`,color:C.text2,borderRadius:7,padding:"8px 14px",fontSize:11,cursor:"pointer",fontWeight:700}}>Copiar rastreio</button>}
+              {getTranspLink(logDetail.transportadora)&&<button onClick={()=>window.open(getTranspLink(logDetail.transportadora),"_blank","noopener,noreferrer")} style={{background:C.brand,border:`1px solid ${C.brand}`,color:C.white,borderRadius:7,padding:"8px 14px",fontSize:11,cursor:"pointer",fontWeight:800}}>Abrir transportadora</button>}
+            </div>
+          </div>
         </div>
       )}
     </div>
