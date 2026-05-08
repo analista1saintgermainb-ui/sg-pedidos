@@ -442,6 +442,7 @@ function parseData(text) {
       cep:          g(c,ix.cep),
       statusPrazoRaw: spRaw,
       dataCriacao:  g(c,ix.dataCriacao),
+      importedAt:    new Date().toISOString(),
       email:        g(c,ix.email),
       motivo:       calcMotivo(status),
       urgencia:     urg,
@@ -1597,7 +1598,7 @@ export default function App() {
           if (idx>=0){
             const alertaStatus=existing.enviadoSuporte&&norm(existing.status)!==norm(novo.status)?`Status atualizado: ${existing.status} → ${novo.status}`:existing.alertaStatus
             const spVal=parseStatusPrazo(novo.statusPrazoRaw)
-            result[idx]={...novo,id:existing.id,obs:existing.obs,responsavel:existing.responsavel,chamado:existing.chamado,enviadoSuporte:existing.enviadoSuporte,atendimento:existing.enviadoSuporte?existing.atendimento:novo.atendimento,entregueNoPrazo:spVal!==null?spVal:novo.entregueNoPrazo,alertaStatus,historico:[...existing.historico,{acao:`Status atualizado: ${existing.status} → ${novo.status}`,ts:new Date().toLocaleString("pt-BR")}],isNew:true};updated++
+            result[idx]={...novo,id:existing.id,importedAt:existing.importedAt||novo.importedAt,obs:existing.obs,responsavel:existing.responsavel,chamado:existing.chamado,enviadoSuporte:existing.enviadoSuporte,atendimento:existing.enviadoSuporte?existing.atendimento:novo.atendimento,entregueNoPrazo:spVal!==null?spVal:novo.entregueNoPrazo,alertaStatus,historico:[...existing.historico,{acao:`Status atualizado: ${existing.status} → ${novo.status}`,ts:new Date().toLocaleString("pt-BR")}],isNew:true};updated++
           }
         }
       }
@@ -1902,6 +1903,9 @@ export default function App() {
 
   const stOpts=uniq(baseLog.map(r=>r.status)), trOpts=uniq(baseLog.map(r=>r.transportadora))
   const st={log:baseLog.length,alta:baseLog.filter(r=>r.urgencia==="Alta").length,acionar:baseLog.filter(r=>r.acionar==="Sim").length}
+  const logDentroPrazo = baseLog.filter(r=>{const dt=parsePrazo(r.prazo); if(!dt) return false; const h=new Date(); h.setHours(0,0,0,0); return dt>=h}).length
+  const logForaPrazo = baseLog.filter(r=>{const dt=parsePrazo(r.prazo); if(!dt) return false; const h=new Date(); h.setHours(0,0,0,0); return dt<h&&!isEntregue(r.status)}).length
+  const logCriadosHoje = baseLog.filter(r=>{const dt=parsePrazo(r.importedAt||r.dataCriacao); if(dt){const h=new Date(); h.setHours(0,0,0,0); return dt>=h}; return r.isNew}).length
   const ss={total:baseSup.length,abertos:baseSup.filter(r=>r.atendimento==="Aberto").length,andamento:baseSup.filter(r=>r.atendimento==="Em andamento").length}
   const devStats={total:baseDev.length,pendentes:baseDev.filter(r=>normalizeDevStatus(r.devolucaoStatus)===DEV_STATUS.returning).length}
   const reenvStats={total:baseReenvio.length,pendentes:baseReenvio.filter(r=>(r.reenvioStatus||"Pendente")==="Pendente").length}
@@ -2191,10 +2195,10 @@ export default function App() {
       {tab==="logistica"&&!showImp&&(
         <div style={{padding:"24px 32px"}}>
           <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:20}}>
-            <KpiCard label="Em logística"    val={st.log}/>
-            <KpiCard label="Urgência alta"   val={st.alta}    accent={st.alta>0}/>
-            <KpiCard label="CrÃ­ticos agora" val={criticaRows.length} accent={criticaRows.length>0}/>
-            <KpiCard label="Acionar suporte" val={st.acionar} accent={st.acionar>0}/>
+            <KpiCard label="Em logística" val={st.log}/>
+            <KpiCard label="Dentro do prazo" val={logDentroPrazo}/>
+            <KpiCard label="Fora do prazo" val={logForaPrazo} accent={logForaPrazo>0}/>
+            <KpiCard label="Cadastrados hoje" val={logCriadosHoje}/>
           </div>
           <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
             {[
@@ -2662,4 +2666,3 @@ export default function App() {
     </div>
   )
 }
-
