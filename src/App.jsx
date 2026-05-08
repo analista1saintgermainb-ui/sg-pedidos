@@ -2196,13 +2196,6 @@ export default function App() {
             <KpiCard label="CrÃ­ticos agora" val={criticaRows.length} accent={criticaRows.length>0}/>
             <KpiCard label="Acionar suporte" val={st.acionar} accent={st.acionar>0}/>
           </div>
-          {logMode==="atencao"&&prioridadeRows.length>0&&(
-            <div style={{background:C.brand,border:`1px solid ${C.brand}`,borderLeft:`4px solid ${C.red}`,color:C.white,padding:"12px 16px",marginBottom:14,display:"flex",alignItems:"center",gap:12,boxShadow:shadow.md}}>
-              <div style={{fontSize:11,fontWeight:800,textTransform:"uppercase"}}>{prioridadeRows.length} pedidos exigem tratativa</div>
-              <div style={{fontSize:11,color:"#BDBDBD",flex:1}}>Prioridade por prazo vencido, extravio, devolucao, urgencia alta ou falta de movimentacao.</div>
-              <button onClick={()=>{setQf("urgente");clearSel()}} style={{background:C.white,border:"none",color:C.brand,borderRadius:4,padding:"7px 12px",fontSize:10,fontWeight:800,cursor:"pointer"}}>Ver urgentes</button>
-            </div>
-          )}
           <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
             {[
               {id:"atencao",label:"Atenção do time",count:logAtencaoRows.length},
