@@ -235,6 +235,20 @@ function isEntregue(status) {
   return s.includes("entregue")||s.includes("finaliz")||s.includes("entrega realizada")
 }
 
+function shouldAutoSupport(status) {
+  const s = norm(status)
+  return (
+    s.includes("problema_entrega") ||
+    s.includes("problema entrega") ||
+    s.includes("extravia") ||
+    s.includes("apreend") ||
+    s.includes("aguardando_retirada") ||
+    s.includes("aguardando retirada") ||
+    s.includes("retirada_transportadora") ||
+    s.includes("retirada transportadora")
+  )
+}
+
 function diasSemMov(ultimaMov) {
   if (!ultimaMov) return null
   const d = parsePrazo(ultimaMov)
@@ -386,6 +400,7 @@ function parseData(text) {
     const status = g(c,ix.status), prazo = g(c,ix.prazo)
     const urg = calcUrg(prazo,status)
     const entregue = isEntregue(status)
+    const autoSupport = shouldAutoSupport(status) && !entregue
     const spRaw = g(c,ix.statusPrazo)
     const spVal = parseStatusPrazo(spRaw)
     const dt = parsePrazo(prazo) // BUG FIX #8: dt declarado antes de uso em noPrazo
@@ -413,7 +428,7 @@ function parseData(text) {
       motivo:       calcMotivo(status),
       urgencia:     urg,
       acionar:      calcAcionar(urg,status),
-      enviadoSuporte:false,
+      enviadoSuporte:autoSupport,
       atendimento:  entregue?"Resolvido":"Aberto",
       entregueNoPrazo: noPrazo,
       alertaStatus: null,
@@ -426,7 +441,7 @@ function parseData(text) {
       novaTransportadora: "",
       novoRastreio: "",
       materialReenvio: "",
-      obs:"", historico: entregue?[{acao:"Arquivado automaticamente — entrega concluída",ts:new Date().toLocaleString("pt-BR")}]:[],
+      obs:"", historico: entregue?[{acao:"Arquivado automaticamente — entrega concluída",ts:new Date().toLocaleString("pt-BR")}]:autoSupport?[{acao:`Enviado automaticamente ao suporte: ${status}`,ts:new Date().toLocaleString("pt-BR"),usuario:"Sistema"}]:[],
       responsavel:"", sentAt:null, chamado:"", isNew:true,
     }
   }).filter(r=>{
@@ -1541,11 +1556,15 @@ export default function App() {
       const byNuvem=new Map(prev.map(r=>[r.nuvem,r])); const result=[...prev]
       for (const novo of parsed) {
         const existing=byNuvem.get(novo.nuvem)
+        const autoSupportNovo = shouldAutoSupport(novo.status) && !isEntregue(novo.status)
         if (!existing){result.push(novo);added++}
         else if (norm(existing.status)===norm(novo.status)){
           if (isEntregue(novo.status)&&!existing.enviadoSuporte&&existing.atendimento!=="Resolvido"){
             const idx=result.findIndex(r=>r.nuvem===novo.nuvem)
             if (idx>=0){result[idx]={...existing,email:novo.email||existing.email,atendimento:"Resolvido",enviadoSuporte:false,historico:[...existing.historico,{acao:"Arquivado automaticamente — entrega concluída",ts:new Date().toLocaleString("pt-BR")}]};updated++}
+          }else if (autoSupportNovo&&!existing.enviadoSuporte&&existing.atendimento!=="Resolvido"){
+            const idx=result.findIndex(r=>r.nuvem===novo.nuvem)
+            if (idx>=0){result[idx]={...existing,email:novo.email||existing.email,enviadoSuporte:true,atendimento:"Aberto",sentAt:new Date().toISOString(),historico:[...existing.historico,{acao:`Enviado automaticamente ao suporte: ${novo.status}`,ts:new Date().toLocaleString("pt-BR"),usuario:"Sistema"}],isNew:true};updated++}
           }else{
             // Mesmo status: só atualiza email se vier preenchido
             if (novo.email && !existing.email) {
@@ -1563,7 +1582,10 @@ export default function App() {
           }
         }
       }
-      return result
+      return result.map(r=>{
+        const auto = shouldAutoSupport(r.status) && !isEntregue(r.status) && !r.enviadoSuporte && r.atendimento!=="Resolvido"
+        return auto ? {...r,enviadoSuporte:true,atendimento:"Aberto",sentAt:r.sentAt||new Date().toISOString(),historico:[...(r.historico||[]),{acao:`Enviado automaticamente ao suporte: ${r.status}`,ts:new Date().toLocaleString("pt-BR"),usuario:"Sistema"}],isNew:true} : r
+      })
     })
     setTimeout(()=>{
       const parts=[]
@@ -1727,12 +1749,14 @@ export default function App() {
         if (!statusChanged && !movChanged) return r
         changed++
         const entregue = isEntregue(ch.status)
+        const autoSupport = shouldAutoSupport(ch.status) && !entregue
         return {
           ...r,
           ...ch,
           atendimento: entregue ? "Resolvido" : r.atendimento,
-          enviadoSuporte: entregue ? false : r.enviadoSuporte,
-          historico:[...(r.historico||[]),{acao:`Total Express auto: ${r.status||"-"} -> ${ch.status||"sem nova ocorrencia"}`,ts,usuario:"Sistema"}],
+          enviadoSuporte: entregue ? false : (r.enviadoSuporte || autoSupport),
+          sentAt: autoSupport&&!r.enviadoSuporte ? new Date().toISOString() : r.sentAt,
+          historico:[...(r.historico||[]),{acao:`Total Express auto: ${r.status||"-"} -> ${ch.status||"sem nova ocorrencia"}`,ts,usuario:"Sistema"},...(autoSupport&&!r.enviadoSuporte?[{acao:`Enviado automaticamente ao suporte: ${ch.status}`,ts,usuario:"Sistema"}]:[])],
           isNew:true,
         }
       }))
@@ -1777,12 +1801,14 @@ export default function App() {
         const changed = ch.status && norm(ch.status)!==norm(r.status)
         if (changed) updated++
         const entregue = isEntregue(ch.status)
+        const autoSupport = shouldAutoSupport(ch.status) && !entregue
         return {
           ...r,
           ...ch,
           atendimento: entregue ? "Resolvido" : r.atendimento,
-          enviadoSuporte: entregue ? false : r.enviadoSuporte,
-          historico: changed ? [...(r.historico||[]), {acao:`Correios atualizado: ${r.status||"-"} -> ${ch.status}`,ts:new Date().toLocaleString("pt-BR"),usuario:nomeAtendente}] : r.historico,
+          enviadoSuporte: entregue ? false : (r.enviadoSuporte || autoSupport),
+          sentAt: autoSupport&&!r.enviadoSuporte ? new Date().toISOString() : r.sentAt,
+          historico: changed ? [...(r.historico||[]), {acao:`Correios atualizado: ${r.status||"-"} -> ${ch.status}`,ts:new Date().toLocaleString("pt-BR"),usuario:nomeAtendente},...(autoSupport&&!r.enviadoSuporte?[{acao:`Enviado automaticamente ao suporte: ${ch.status}`,ts:new Date().toLocaleString("pt-BR"),usuario:"Sistema"}]:[])] : r.historico,
           isNew: changed ? true : r.isNew,
         }
       }))
