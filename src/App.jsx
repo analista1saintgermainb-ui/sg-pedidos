@@ -92,6 +92,12 @@ async function totalExpressRequest(payload, token) {
   if (!r.ok) throw new Error(d.error||d.message||d.descricao||"Erro Total Express")
   return d
 }
+async function correiosRequest(payload, token) {
+  const r = await fetch("/api/correios", {method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`},body:JSON.stringify(payload)})
+  const d = await r.json().catch(()=>({}))
+  if (!r.ok) throw new Error(d.error||d.message||"Erro Correios")
+  return d
+}
 async function dbLoadFast(token, onPartial) {
   let all = [], from = 0, step = 1000
   while (true) {
@@ -568,6 +574,9 @@ function isTotalExpress(transportadora) {
   const t = norm(transportadora)
   return t.includes("total") || t.includes("tex")
 }
+function isCorreios(transportadora) {
+  return norm(transportadora).includes("correio")
+}
 function latestTotalTracking(item) {
   const events = Array.isArray(item?.tracking) ? item.tracking : []
   return events
@@ -596,6 +605,20 @@ function totalExpressUpdateFromItem(item) {
     acionar: calcAcionar(urgencia, status),
     totalExpressLastSync: new Date().toISOString(),
     comprovanteEntregaUrl: proof,
+  }
+}
+function correiosUpdateFromItem(item) {
+  const status = item?.status || item?.detalhe || ""
+  const urgencia = calcUrg("", status)
+  return {
+    rastreio: item?.codigo || "",
+    status,
+    ultimaMov: item?.ultimaMov || "",
+    motivo: calcMotivo(status),
+    urgencia,
+    acionar: calcAcionar(urgencia, status),
+    correiosLocal: item?.local || "",
+    correiosLastSync: new Date().toISOString(),
   }
 }
 
@@ -1326,7 +1349,8 @@ export default function App() {
   const [syncStatus,setSyncStatus]=useState("idle")
   const [lastSync,setLastSync]=useState(null)
   const [countdown,setCountdown]=useState(10)
-  const saveTimer=useRef(null); const fileRef=useRef()
+  const [correiosSyncing,setCorreiosSyncing]=useState(false)
+  const saveTimer=useRef(null); const fileRef=useRef(); const correiosSyncingRef=useRef(false)
   const token = session?.access_token
 
   const addToast = useCallback((msg,type="ok",ms=4000)=>{
@@ -1463,6 +1487,14 @@ export default function App() {
   useEffect(()=>setLPage(1),[lSrch,lSt,lTr,lUrg,lAc,lSitPrazo,qf,sortCol,sortDir])
   useEffect(()=>setAPage(1),[aSrch])
   useEffect(()=>{setSResp("Todos")},[]) // reset on mount
+  useEffect(()=>{
+    if (!token || !perms?.canOperate) return
+    const hasCorreios = rows.some(r=>isCorreios(r.transportadora)&&r.rastreio&&r.atendimento!=="Resolvido")
+    if (!hasCorreios) return
+    const first = setTimeout(()=>syncCorreiosOrders({silent:true}), 8000)
+    const interval = setInterval(()=>syncCorreiosOrders({silent:true}), 30 * 60 * 1000)
+    return ()=>{clearTimeout(first); clearInterval(interval)}
+  },[token,perms,rows.length,syncCorreiosOrders])
   const detailPanelRef = useRef(null)
   const queueRef = useRef(null)
   useEffect(()=>{
@@ -1618,6 +1650,47 @@ export default function App() {
     upd(id,{chamado:ticketId?`Total #${ticketId}`:(atual.chamado||"Ticket Total aberto"),totalExpressTicketId:ticketId},{acao:`Ticket Total Express aberto${ticketId?`: ${ticketId}`:""}`,usuario:nomeAtendente})
     addToast(ticketId?`Ticket Total #${ticketId} aberto`:"Ticket Total Express aberto")
   }
+  const syncCorreiosOrders = useCallback(async ({silent=false}={}) => {
+    if (!token || !perms?.canOperate || correiosSyncingRef.current) return
+    const targets = rows.filter(r=>isCorreios(r.transportadora)&&r.rastreio&&r.atendimento!=="Resolvido")
+    if (!targets.length) {
+      if (!silent) addToast("Nenhum pedido Correios ativo com rastreio para atualizar","warn")
+      return
+    }
+    correiosSyncingRef.current = true
+    setCorreiosSyncing(true)
+    try {
+      const codigos = Array.from(new Set(targets.map(r=>String(r.rastreio).trim().toUpperCase()).filter(Boolean)))
+      const data = await correiosRequest({codigos, transportadora:"Correios"}, token)
+      const byCode = new Map((data.items||[]).map(item=>[String(item.codigo||"").trim().toUpperCase(), item]))
+      let updated = 0
+      setRows(prev=>prev.map(r=>{
+        if (!isCorreios(r.transportadora) || !r.rastreio || r.atendimento==="Resolvido") return r
+        const item = byCode.get(String(r.rastreio).trim().toUpperCase())
+        if (!item) return r
+        const ch = correiosUpdateFromItem(item)
+        Object.keys(ch).forEach(k=>{ if (ch[k]==="" || ch[k]===undefined || ch[k]===null) delete ch[k] })
+        const changed = ch.status && norm(ch.status)!==norm(r.status)
+        if (changed) updated++
+        const entregue = isEntregue(ch.status)
+        return {
+          ...r,
+          ...ch,
+          atendimento: entregue ? "Resolvido" : r.atendimento,
+          enviadoSuporte: entregue ? false : r.enviadoSuporte,
+          historico: changed ? [...(r.historico||[]), {acao:`Correios atualizado: ${r.status||"-"} -> ${ch.status}`,ts:new Date().toLocaleString("pt-BR"),usuario:nomeAtendente}] : r.historico,
+          isNew: changed ? true : r.isNew,
+        }
+      }))
+      const errors = data.errors?.length || 0
+      if (!silent || updated>0 || errors>0) addToast(`${updated} pedido${updated===1?"":"s"} Correios atualizado${updated===1?"":"s"}${errors?` · ${errors} sem retorno`:""}`, errors?"warn":"ok",6000)
+    } catch(e) {
+      if (!silent) addToast("Erro Correios: "+e.message,"error",8000)
+    } finally {
+      correiosSyncingRef.current = false
+      setCorreiosSyncing(false)
+    }
+  },[token,perms,rows,nomeAtendente,addToast])
   const handleClearAll  = () => {
     if (!perms?.canClear) return
     if (!window.confirm("Isso removerá TODOS os pedidos da base de dados. Esta ação não pode ser desfeita. Confirmar?")) return
