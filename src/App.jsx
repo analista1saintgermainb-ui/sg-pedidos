@@ -443,6 +443,7 @@ function parseData(text) {
       statusPrazoRaw: spRaw,
       dataCriacao:  g(c,ix.dataCriacao),
       importedAt:    new Date().toISOString(),
+      dataEntrega:    dtEntrega ? dtEntrega.toISOString() : "",
       email:        g(c,ix.email),
       motivo:       calcMotivo(status),
       urgencia:     urg,
@@ -1405,6 +1406,7 @@ export default function App() {
   const [selSupIds,setSelSupIds]=useState(new Set())
   const [openHist,setOpenHist]=useState(false)
   const [aSrch,setASrch]=useState("")
+  const [aDay,setADay]=useState("Todos")
   const [aPage,setAPage]=useState(1)
   const [syncStatus,setSyncStatus]=useState("idle")
   const [lastSync,setLastSync]=useState(null)
@@ -1546,7 +1548,7 @@ export default function App() {
 
   useEffect(()=>{if (!rows.some(r=>r.isNew))return;const t=setTimeout(()=>setRows(p=>p.map(r=>({...r,isNew:false}))),6000);return()=>clearTimeout(t)},[rows])
   useEffect(()=>setLPage(1),[lSrch,lSt,lTr,lUrg,lAc,lSitPrazo,qf,sortCol,sortDir])
-  useEffect(()=>setAPage(1),[aSrch])
+  useEffect(()=>setAPage(1),[aSrch,aDay])
   useEffect(()=>{setSResp("Todos")},[]) // reset on mount
   const detailPanelRef = useRef(null)
   const queueRef = useRef(null)
@@ -1581,7 +1583,7 @@ export default function App() {
         else if (norm(existing.status)===norm(novo.status)){
           if (isEntregue(novo.status)&&!existing.enviadoSuporte&&existing.atendimento!=="Resolvido"){
             const idx=result.findIndex(r=>r.nuvem===novo.nuvem)
-            if (idx>=0){result[idx]={...existing,email:novo.email||existing.email,atendimento:"Resolvido",enviadoSuporte:false,historico:[...existing.historico,{acao:"Arquivado automaticamente — entrega concluída",ts:new Date().toLocaleString("pt-BR")}]};updated++}
+            if (idx>=0){const doneAt=novo.dataEntrega||new Date().toISOString();result[idx]={...existing,email:novo.email||existing.email,atendimento:"Resolvido",enviadoSuporte:false,finalizadoEm:existing.finalizadoEm||doneAt,dataEntrega:existing.dataEntrega||doneAt,historico:[...existing.historico,{acao:"Arquivado automaticamente — entrega concluída",ts:new Date().toLocaleString("pt-BR")}]};updated++}
           }else if (autoSupportNovo&&!existing.enviadoSuporte&&existing.atendimento!=="Resolvido"){
             const idx=result.findIndex(r=>r.nuvem===novo.nuvem)
             if (idx>=0){result[idx]={...existing,email:novo.email||existing.email,enviadoSuporte:true,atendimento:"Aberto",sentAt:new Date().toISOString(),historico:[...existing.historico,{acao:`Enviado automaticamente ao suporte: ${novo.status}`,ts:new Date().toLocaleString("pt-BR"),usuario:"Sistema"}],isNew:true};updated++}
@@ -1630,6 +1632,10 @@ export default function App() {
     const historico=hist?[...r.historico,{...hist,ts:new Date().toLocaleString("pt-BR")}]:r.historico
     return {...r,...ch,historico}
   }))
+  const finishChanges = extra => {
+    const now = new Date().toISOString()
+    return {atendimento:"Resolvido",finalizadoEm:now,dataEntrega:now,...extra}
+  }
   const del = id => {if (!perms?.canDelete)return;setRows(prev=>prev.filter(r=>r.id!==id));dbDelete(id,token).catch(()=>{})}
   const toggleSel = id => setSelIds(prev=>{const n=new Set(prev);n.has(id)?n.delete(id):n.add(id);return n})
   const clearSel  = () => setSelIds(new Set())
@@ -1643,11 +1649,11 @@ export default function App() {
   const bulkArchive  = () => {
     if (!perms?.canOperate) return
     const ts=new Date().toLocaleString("pt-BR")
-    setRows(prev=>prev.map(r=>selSupIds.has(r.id)?{...r,atendimento:"Resolvido",historico:[...r.historico,{acao:"Arquivado em lote",ts}]}:r))
+    setRows(prev=>prev.map(r=>selSupIds.has(r.id)?{...r,...finishChanges({}),historico:[...r.historico,{acao:"Arquivado em lote",ts}]}:r))
     addToast(`${selSupIds.size} pedido${selSupIds.size>1?"s":""} finalizado${selSupIds.size>1?"s":""}`)
     if (selSupIds.has(selSup)) setSelSup(null); setSelSupIds(new Set())
   }
-  const handleResolve   = id => {if (!perms?.canOperate)return;upd(id,{atendimento:"Resolvido"},{acao:"Atendimento finalizado",usuario:nomeAtendente});setSelSup(null);addToast("Pedido finalizado")}
+  const handleResolve   = id => {if (!perms?.canOperate)return;upd(id,finishChanges({}),{acao:"Atendimento finalizado",usuario:nomeAtendente});setSelSup(null);addToast("Pedido finalizado")}
   const handleCreateReenvio = id => {
     if (!perms?.canOperate) return
     const atual = rows.find(r=>r.id===id)
@@ -1774,6 +1780,8 @@ export default function App() {
           ...r,
           ...ch,
           atendimento: entregue ? "Resolvido" : r.atendimento,
+          finalizadoEm: entregue ? (r.finalizadoEm || ch.dataEntrega || new Date().toISOString()) : r.finalizadoEm,
+          dataEntrega: entregue ? (r.dataEntrega || ch.dataEntrega || new Date().toISOString()) : r.dataEntrega,
           enviadoSuporte: entregue ? false : (r.enviadoSuporte || autoSupport),
           sentAt: autoSupport&&!r.enviadoSuporte ? new Date().toISOString() : r.sentAt,
           historico:[...(r.historico||[]),{acao:`Total Express auto: ${r.status||"-"} -> ${ch.status||"sem nova ocorrencia"}`,ts,usuario:"Sistema"},...(autoSupport&&!r.enviadoSuporte?[{acao:`Enviado automaticamente ao suporte: ${ch.status}`,ts,usuario:"Sistema"}]:[])],
@@ -1826,6 +1834,8 @@ export default function App() {
           ...r,
           ...ch,
           atendimento: entregue ? "Resolvido" : r.atendimento,
+          finalizadoEm: entregue ? (r.finalizadoEm || ch.dataEntrega || new Date().toISOString()) : r.finalizadoEm,
+          dataEntrega: entregue ? (r.dataEntrega || ch.dataEntrega || new Date().toISOString()) : r.dataEntrega,
           enviadoSuporte: entregue ? false : (r.enviadoSuporte || autoSupport),
           sentAt: autoSupport&&!r.enviadoSuporte ? new Date().toISOString() : r.sentAt,
           historico: changed ? [...(r.historico||[]), {acao:`Correios atualizado: ${r.status||"-"} -> ${ch.status}`,ts:new Date().toLocaleString("pt-BR"),usuario:nomeAtendente},...(autoSupport&&!r.enviadoSuporte?[{acao:`Enviado automaticamente ao suporte: ${ch.status}`,ts:new Date().toLocaleString("pt-BR"),usuario:"Sistema"}]:[])] : r.historico,
@@ -1849,13 +1859,13 @@ export default function App() {
   }
   const handleFinishFromLog = id => {
     if (!perms?.canOperate) return
-    upd(id, {atendimento:"Resolvido", enviadoSuporte:false}, {acao:"Finalizado pela Logística", usuario:nomeAtendente})
+    upd(id, finishChanges({enviadoSuporte:false,status:"ENTREGUE"}), {acao:"Finalizado pela Logística", usuario:nomeAtendente})
     addToast("Pedido finalizado")
   }
   const bulkFinishFromLog = () => {
     if (!perms?.canOperate) return
     const ts = new Date().toLocaleString("pt-BR")
-    setRows(prev=>prev.map(r=>selIds.has(r.id)?{...r,atendimento:"Resolvido",enviadoSuporte:false,historico:[...r.historico,{acao:"Finalizado em lote pela Logística",ts,usuario:nomeAtendente}]}:r))
+    setRows(prev=>prev.map(r=>selIds.has(r.id)?{...r,...finishChanges({enviadoSuporte:false,status:"ENTREGUE"}),historico:[...r.historico,{acao:"Finalizado em lote pela Logística",ts,usuario:nomeAtendente}]}:r))
     addToast(`${selIds.size} pedido${selIds.size>1?"s":""} finalizado${selIds.size>1?"s":""}`); clearSel()
   }
   const toggleSort = col => {if (sortCol===col)setSortDir(d=>d==="asc"?"desc":"asc");else{setSortCol(col);setSortDir("asc")}}
@@ -1899,7 +1909,27 @@ export default function App() {
   const pagedLog   = filteredLog.slice((safeP-1)*PAGE_SIZE,safeP*PAGE_SIZE)
   const respOpts = uniq(baseSup.map(r=>r.responsavel).filter(Boolean))
   const supRows = baseSup.filter(r=>{const q=sSrch.toLowerCase();return(!q||[r.nuvem,r.destinatario,r.rastreio,r.status].some(v=>(v||"").toLowerCase().includes(q)))&&(sAtend==="Todos"||r.atendimento===sAtend)&&(sUrg==="Todos"||r.urgencia===sUrg)&&(sResp==="Todos"||r.responsavel===sResp)}).sort((a,b)=>{const uo={Alta:0,Média:1,Baixa:2,"—":3},ao={Aberto:0,"Em andamento":1};return(uo[a.urgencia]-uo[b.urgencia])||(ao[a.atendimento]-ao[b.atendimento])})
-  const archRows = baseArch.filter(r=>{const q=aSrch.toLowerCase();return!q||[r.nuvem,r.destinatario,r.transportadora,r.status].some(v=>(v||"").toLowerCase().includes(q))}).sort((a,b)=>{const ta=(a.historico.find(h=>h.acao&&(h.acao.includes("Resolvido")||h.acao.includes("Arquivado")))||{}).ts||"";const tb=(b.historico.find(h=>h.acao&&(h.acao.includes("Resolvido")||h.acao.includes("Arquivado")))||{}).ts||"";return tb.localeCompare(ta)})
+  const parseHistDate = ts => {const m=String(ts||"").match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);return m?new Date(+m[3],+m[2]-1,+m[1]):null}
+  const dayKey = dt => dt ? `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}` : ""
+  const fmtDate = dt => dt ? dt.toLocaleDateString("pt-BR") : "—"
+  const archiveInfo = r => {
+    const histDone = [...(r.historico||[])].reverse().find(h=>h.acao&&["Finalizado","Resolvido","Arquivado","entrega conclu"].some(x=>h.acao.includes(x)))
+    const entregaRaw = r.dataEntrega||r.finalizadoEm||(isEntregue(r.status)?r.ultimaMov:"")
+    const entrega = parsePrazo(entregaRaw)||parseHistDate(histDone?.ts)
+    const prazo = parsePrazo(r.prazo)
+    const atraso = entrega&&prazo ? Math.max(0,Math.ceil((new Date(entrega.getFullYear(),entrega.getMonth(),entrega.getDate())-new Date(prazo.getFullYear(),prazo.getMonth(),prazo.getDate()))/86400000)) : null
+    const noPrazo = entrega&&prazo ? atraso===0 : null
+    return {entrega,prazo,atraso,noPrazo,key:dayKey(entrega)}
+  }
+  const archInfoRows = baseArch.map(r=>({r,info:archiveInfo(r)}))
+  const todayKey = dayKey(new Date())
+  const archEntreguesHoje = archInfoRows.filter(x=>x.info.key===todayKey).length
+  const archNoPrazo = archInfoRows.filter(x=>x.info.noPrazo===true).length
+  const archForaPrazo = archInfoRows.filter(x=>x.info.noPrazo===false).length
+  const archDayMap = archInfoRows.reduce((acc,x)=>{if(!x.info.key)return acc;acc[x.info.key]=acc[x.info.key]||{day:x.info.key,label:fmtDate(x.info.entrega),total:0,noPrazo:0,foraPrazo:0};acc[x.info.key].total++;if(x.info.noPrazo===true)acc[x.info.key].noPrazo++;if(x.info.noPrazo===false)acc[x.info.key].foraPrazo++;return acc},{})
+  const archDayData = Object.values(archDayMap).sort((a,b)=>a.day.localeCompare(b.day)).slice(-14)
+  const archFilteredBase = aDay==="Todos" ? baseArch : baseArch.filter(r=>archiveInfo(r).key===aDay)
+  const archRows = archFilteredBase.filter(r=>{const q=aSrch.toLowerCase();return!q||[r.nuvem,r.destinatario,r.transportadora,r.status,r.rastreio].some(v=>(v||"").toLowerCase().includes(q))}).sort((a,b)=>String(archiveInfo(b).key).localeCompare(String(archiveInfo(a).key)))
 
   const stOpts=uniq(baseLog.map(r=>r.status)), trOpts=uniq(baseLog.map(r=>r.transportadora))
   const st={log:baseLog.length,alta:baseLog.filter(r=>r.urgencia==="Alta").length,acionar:baseLog.filter(r=>r.acionar==="Sim").length}
@@ -2577,13 +2607,34 @@ export default function App() {
 
       {tab==="arquivados"&&(
         <div style={{padding:"24px 32px"}}>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:20}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:20}}>
             <KpiCard label="Total finalizados" val={arch}/>
-            <KpiCard label="Resolvidos hoje" val={rows.filter(r=>{if(r.atendimento!=="Resolvido")return false;const h=r.historico.find(x=>x.acao&&(x.acao.includes("Resolvido")||x.acao.includes("Arquivado")));return h&&h.ts&&h.ts.startsWith(new Date().toLocaleDateString("pt-BR"))}).length}/>
-            <KpiCard label="Com observações" val={baseArch.filter(r=>r.obs&&r.obs.trim()).length}/>
+            <KpiCard label="Entregues hoje" val={archEntreguesHoje}/>
+            <KpiCard label="No prazo" val={archNoPrazo}/>
+            <KpiCard label="Fora do prazo" val={archForaPrazo} accent={archForaPrazo>0}/>
           </div>
           {arch===0?<div style={{textAlign:"center",padding:"56px 0",color:C.text4}}><div style={{fontSize:32,marginBottom:12,opacity:0.2}}>◎</div><div style={{fontSize:14}}>Nenhum atendimento finalizado</div></div>:(
             <div>
+              <div style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:8,boxShadow:shadow.sm,padding:16,marginBottom:14}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,marginBottom:12}}>
+                  <div>
+                    <div style={{fontSize:9,color:C.text3,textTransform:"uppercase",letterSpacing:"0.16em",fontWeight:800}}>Entregas por dia</div>
+                    <div style={{fontSize:12,color:C.text4,marginTop:4}}>Clique em um dia para filtrar a lista abaixo</div>
+                  </div>
+                  <button onClick={()=>setADay("Todos")} style={{background:aDay==="Todos"?C.brand:C.cream,border:`1px solid ${aDay==="Todos"?C.brand:C.border}`,color:aDay==="Todos"?C.white:C.text2,borderRadius:6,padding:"8px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}>Todos os dias</button>
+                </div>
+                <div style={{height:220}}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={archDayData} onClick={s=>{if(s?.activePayload?.[0]?.payload?.day)setADay(s.activePayload[0].payload.day)}}>
+                      <XAxis dataKey="label" tick={{fontSize:10,fill:C.text3}} axisLine={false} tickLine={false}/>
+                      <YAxis allowDecimals={false} tick={{fontSize:10,fill:C.text3}} axisLine={false} tickLine={false}/>
+                      <Tooltip contentStyle={{borderRadius:8,border:`1px solid ${C.border}`}}/>
+                      <Bar dataKey="noPrazo" name="No prazo" stackId="a" fill={C.green}/>
+                      <Bar dataKey="foraPrazo" name="Fora do prazo" stackId="a" fill={C.red}/>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
               <div style={{marginBottom:14}}><input value={aSrch} onChange={e=>setASrch(e.target.value)} placeholder="Buscar nos finalizados..." style={{...getINP(),width:"100%",padding:"10px 14px",boxSizing:"border-box",boxShadow:shadow.sm}}/></div>
               {(()=>{
                 const aTotalPages = Math.max(1,Math.ceil(archRows.length/PAGE_SIZE))
@@ -2592,24 +2643,28 @@ export default function App() {
                 return <>
                   <div style={{overflowX:"auto",overflowY:"auto",maxHeight:"60vh",borderRadius:12,border:`1px solid ${C.border}`,boxShadow:shadow.sm}}>
                     <table style={{width:"100%",borderCollapse:"collapse",fontSize:compact?11:12,tableLayout:"fixed",minWidth:900}}>
-                      <colgroup><col style={{width:90}}/><col style={{width:150}}/><col style={{width:110}}/><col style={{width:110}}/><col style={{width:120}}/><col style={{width:70}}/><col style={{width:110}}/><col style={{width:96}}/><col style={{width:96}}/><col style={{width:90}}/></colgroup>
-                      <thead><tr>{["No NUVEM","Destinatário","Transportadora","Status","Motivo","Urgência","Prazo / SLA","Chamado","Responsável","Ações"].map(h=><th key={h} style={THF}>{h}</th>)}</tr></thead>
+                      <colgroup><col style={{width:90}}/><col style={{width:160}}/><col style={{width:120}}/><col style={{width:110}}/><col style={{width:110}}/><col style={{width:110}}/><col style={{width:90}}/><col style={{width:100}}/><col style={{width:100}}/><col style={{width:96}}/><col style={{width:90}}/></colgroup>
+                      <thead><tr>{["No NUVEM","Destinatário","Transportadora","Status","Prazo logístico","Entrega real","Atraso","SLA","Chamado","Responsável","Ações"].map(h=><th key={h} style={THF}>{h}</th>)}</tr></thead>
                       <tbody>
-                        {pagedArch.length===0?<tr><td colSpan={10} style={{textAlign:"center",padding:32,color:C.text4}}>Nenhum resultado</td></tr>
-                        :pagedArch.map((r,i)=>(
-                          <tr key={r.id} style={{background:i%2===0?C.white:C.cream,borderBottom:`1px solid ${C.border}55`}}>
-                            <td style={{padding:`${pd}px 14px`,fontWeight:600,color:C.text3,fontSize:11}}>{r.nuvem}</td>
-                            <td style={{padding:`${pd}px 14px`,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:C.text1}} title={r.destinatario}>{r.destinatario}</td>
-                            <td style={{padding:`${pd}px 14px`,color:C.text2,overflow:"hidden",textOverflow:"ellipsis"}}>{r.transportadora}</td>
-                            <td style={{padding:`${pd}px 14px`}}><StatusBadge val={r.status}/></td>
-                            <td style={{padding:`${pd}px 14px`,color:C.text3,fontSize:10,overflow:"hidden",textOverflow:"ellipsis"}} title={r.motivo}>{r.motivo}</td>
-                            <td style={{padding:`${pd}px 14px`}}><Chip val={r.urgencia} styles={urgStyles}/></td>
-                            <td style={{padding:`${pd}px 14px`}}><SlaCell prazo={r.prazo}/></td>
-                            <td style={{padding:`${pd}px 14px`,color:C.text3,fontSize:11}}>{r.chamado||"—"}</td>
-                            <td style={{padding:`${pd}px 14px`,color:C.text3,fontSize:11,overflow:"hidden",textOverflow:"ellipsis"}}>{r.responsavel||"—"}</td>
-                            <td style={{padding:`${pd}px 14px`}}>{perms?.canOperate&&<button onClick={()=>upd(r.id,{atendimento:"Em andamento"},{acao:"Reaberto dos finalizados",usuario:nomeAtendente})} style={{background:C.cream,border:`1px solid ${C.border}`,color:C.text2,borderRadius:6,padding:"4px 12px",fontSize:10,cursor:"pointer",fontWeight:500}}>Reabrir</button>}</td>
-                          </tr>
-                        ))}
+                        {pagedArch.length===0?<tr><td colSpan={11} style={{textAlign:"center",padding:32,color:C.text4}}>Nenhum resultado</td></tr>
+                        :pagedArch.map((r,i)=>{
+                          const info = archiveInfo(r)
+                          return (
+                            <tr key={r.id} style={{background:i%2===0?C.white:C.cream,borderBottom:`1px solid ${C.border}55`}}>
+                              <td style={{padding:`${pd}px 14px`,fontWeight:600,color:C.text3,fontSize:11}}>{r.nuvem}</td>
+                              <td style={{padding:`${pd}px 14px`,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:C.text1}} title={r.destinatario}>{r.destinatario}</td>
+                              <td style={{padding:`${pd}px 14px`,color:C.text2,overflow:"hidden",textOverflow:"ellipsis"}}>{r.transportadora}</td>
+                              <td style={{padding:`${pd}px 14px`}}><StatusBadge val={r.status}/></td>
+                              <td style={{padding:`${pd}px 14px`,color:C.text3,fontSize:11}}>{fmtDate(info.prazo)}</td>
+                              <td style={{padding:`${pd}px 14px`,color:C.text3,fontSize:11}}>{fmtDate(info.entrega)}</td>
+                              <td style={{padding:`${pd}px 14px`}}>{info.atraso===null?<span style={{color:C.text4}}>—</span>:info.atraso>0?<span style={{background:C.redSoft,color:C.red,border:`1px solid ${C.redBorder}`,borderRadius:999,padding:"3px 8px",fontSize:10,fontWeight:700}}>{info.atraso}d</span>:<span style={{color:C.green,fontSize:11,fontWeight:700}}>0d</span>}</td>
+                              <td style={{padding:`${pd}px 14px`}}>{info.noPrazo===null?<span style={{color:C.text4}}>—</span>:info.noPrazo?<Chip val="No prazo" styles={{"No prazo":{bg:C.greenSoft,color:C.green,bd:C.greenBorder}}}/>:<Chip val="Fora prazo" styles={{"Fora prazo":{bg:C.redSoft,color:C.red,bd:C.redBorder}}}/>}</td>
+                              <td style={{padding:`${pd}px 14px`,color:C.text3,fontSize:11}}>{r.chamado||"—"}</td>
+                              <td style={{padding:`${pd}px 14px`,color:C.text3,fontSize:11,overflow:"hidden",textOverflow:"ellipsis"}}>{r.responsavel||"—"}</td>
+                              <td style={{padding:`${pd}px 14px`}}>{perms?.canOperate&&<button onClick={()=>upd(r.id,{atendimento:"Em andamento"},{acao:"Reaberto dos finalizados",usuario:nomeAtendente})} style={{background:C.cream,border:`1px solid ${C.border}`,color:C.text2,borderRadius:6,padding:"4px 12px",fontSize:10,cursor:"pointer",fontWeight:500}}>Reabrir</button>}</td>
+                            </tr>
+                          )
+                        })}
                       </tbody>
                     </table>
                   </div>
