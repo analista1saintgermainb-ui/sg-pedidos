@@ -1867,7 +1867,8 @@ export default function App() {
   const isLogAttention = r => {
     const dt = parsePrazo(r.prazo)
     const h = new Date(); h.setHours(0,0,0,0)
-    return prioridadeOperacional(r).level!=="normal" || r.urgencia==="Alta" || ["Sim","Avaliar"].includes(r.acionar) || (dt&&dt<h&&!isEntregue(r.status)) || (diasSemMov(r.ultimaMov)!==null&&diasSemMov(r.ultimaMov)>=ALERTA_DIAS)
+    if (dt) return dt <= h && !isEntregue(r.status)
+    return prioridadeOperacional(r).level!=="normal" || r.urgencia==="Alta" || ["Sim","Avaliar"].includes(r.acionar)
   }
   const logAtencaoRows = baseLog.filter(isLogAttention)
   const logViagemRows = baseLog.filter(r=>!isLogAttention(r))
