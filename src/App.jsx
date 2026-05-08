@@ -1715,6 +1715,11 @@ export default function App() {
       Carregando central
     </div>
   )
+  if (!initialDataLoaded) return (
+    <div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",background:C.brand,color:"#F7F6F1",fontSize:10,letterSpacing:"0.18em",textTransform:"uppercase"}}>
+      Carregando pedidos
+    </div>
+  )
 
   const showImp=importing&&perms?.tabs.some(t=>["logistica","dashboard"].includes(t))
   const pd=compact?5:9
