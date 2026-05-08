@@ -1690,15 +1690,15 @@ export default function App() {
     if (!window.confirm("Isso removerá TODOS os pedidos da base de dados. Esta ação não pode ser desfeita. Confirmar?")) return
     setRows([]); dbClear(token).catch(()=>{}); addToast("Todos os dados foram removidos","warn")
   }
-  const handleArchiveFromLog = id => {
+  const handleFinishFromLog = id => {
     if (!perms?.canOperate) return
-    upd(id, {atendimento:"Resolvido", enviadoSuporte:false}, {acao:"Arquivado pela Logística — entrega confirmada", usuario:nomeAtendente})
+    upd(id, {atendimento:"Resolvido", enviadoSuporte:false}, {acao:"Finalizado pela Logística", usuario:nomeAtendente})
     addToast("Pedido finalizado")
   }
-  const bulkArchiveFromLog = () => {
+  const bulkFinishFromLog = () => {
     if (!perms?.canOperate) return
     const ts = new Date().toLocaleString("pt-BR")
-    setRows(prev=>prev.map(r=>selIds.has(r.id)?{...r,atendimento:"Resolvido",enviadoSuporte:false,historico:[...r.historico,{acao:"Arquivado em lote pela Logística",ts,usuario:nomeAtendente}]}:r))
+    setRows(prev=>prev.map(r=>selIds.has(r.id)?{...r,atendimento:"Resolvido",enviadoSuporte:false,historico:[...r.historico,{acao:"Finalizado em lote pela Logística",ts,usuario:nomeAtendente}]}:r))
     addToast(`${selIds.size} pedido${selIds.size>1?"s":""} finalizado${selIds.size>1?"s":""}`); clearSel()
   }
   const toggleSort = col => {if (sortCol===col)setSortDir(d=>d==="asc"?"desc":"asc");else{setSortCol(col);setSortDir("asc")}}
@@ -2062,7 +2062,7 @@ export default function App() {
             <div style={{background:C.brand,borderRadius:10,padding:"12px 20px",marginBottom:14,display:"flex",alignItems:"center",gap:10,boxShadow:shadow.md}}>
               <span style={{color:"#888",fontSize:12,flex:1}}>{selIds.size} pedido{selIds.size>1?"s":""} selecionado{selIds.size>1?"s":""}</span>
               <button onClick={bulkSend} style={{background:C.gold,border:"none",color:C.white,borderRadius:7,padding:"8px 18px",fontSize:11,cursor:"pointer",fontWeight:500,letterSpacing:"0.08em"}}>Enviar ao Suporte ({selIds.size})</button>
-              {perms?.canOperate&&<button onClick={bulkArchiveFromLog} style={{background:C.green,border:"none",color:C.white,borderRadius:7,padding:"8px 18px",fontSize:11,cursor:"pointer",fontWeight:500,letterSpacing:"0.08em"}}>✓ Finalizar ({selIds.size})</button>}
+              {perms?.canOperate&&<button onClick={bulkFinishFromLog} style={{background:C.green,border:"none",color:C.white,borderRadius:7,padding:"8px 18px",fontSize:11,cursor:"pointer",fontWeight:500,letterSpacing:"0.08em"}}>✓ Finalizado ({selIds.size})</button>}
               <button onClick={clearSel} style={{background:"transparent",border:`1px solid #333`,color:"#666",borderRadius:7,padding:"8px 14px",fontSize:11,cursor:"pointer"}}>Cancelar</button>
             </div>
           )}
@@ -2113,7 +2113,7 @@ export default function App() {
                       <div style={{display:"flex",gap:4}}>
                         <button onClick={()=>setLogDetailId(r.id)} style={{flex:1,background:C.brand,border:`1px solid ${C.brand}`,color:C.white,borderRadius:6,padding:"4px 6px",fontSize:9,cursor:"pointer",fontWeight:600,whiteSpace:"nowrap"}}>Detalhes</button>
                         <button onClick={()=>upd(r.id,{enviadoSuporte:true,atendimento:"Aberto",sentAt:new Date().toISOString()},{acao:"Enviado ao suporte"})} style={{flex:1,background:C.cream,border:`1px solid ${C.border}`,color:C.text2,borderRadius:6,padding:"4px 6px",fontSize:9,cursor:"pointer",fontWeight:500,whiteSpace:"nowrap"}}>Suporte →</button>
-                        {perms?.canOperate&&<button onClick={()=>handleArchiveFromLog(r.id)} style={{flex:1,background:C.greenSoft,border:`1px solid ${C.greenBorder}`,color:C.green,borderRadius:6,padding:"4px 6px",fontSize:9,cursor:"pointer",fontWeight:600,whiteSpace:"nowrap"}}>✓ Arq.</button>}
+                        {perms?.canOperate&&<button onClick={()=>handleFinishFromLog(r.id)} style={{flex:1,background:C.greenSoft,border:`1px solid ${C.greenBorder}`,color:C.green,borderRadius:6,padding:"4px 6px",fontSize:9,cursor:"pointer",fontWeight:700,whiteSpace:"nowrap"}}>✓ Finalizado</button>}
                       </div>
                     )}</td>
                     <td style={{padding:`${pd}px 8px`,textAlign:"center"}}>{perms?.canDelete&&<button onClick={()=>del(r.id)} style={{background:"transparent",border:"none",color:C.text4,cursor:"pointer",fontSize:14}}>×</button>}</td>
