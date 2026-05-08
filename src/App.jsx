@@ -1487,14 +1487,6 @@ export default function App() {
   useEffect(()=>setLPage(1),[lSrch,lSt,lTr,lUrg,lAc,lSitPrazo,qf,sortCol,sortDir])
   useEffect(()=>setAPage(1),[aSrch])
   useEffect(()=>{setSResp("Todos")},[]) // reset on mount
-  useEffect(()=>{
-    if (!token || !perms?.canOperate) return
-    const hasCorreios = rows.some(r=>isCorreios(r.transportadora)&&r.rastreio&&r.atendimento!=="Resolvido")
-    if (!hasCorreios) return
-    const first = setTimeout(()=>syncCorreiosOrders({silent:true}), 8000)
-    const interval = setInterval(()=>syncCorreiosOrders({silent:true}), 30 * 60 * 1000)
-    return ()=>{clearTimeout(first); clearInterval(interval)}
-  },[token,perms,rows.length,syncCorreiosOrders])
   const detailPanelRef = useRef(null)
   const queueRef = useRef(null)
   useEffect(()=>{
@@ -1691,6 +1683,7 @@ export default function App() {
       setCorreiosSyncing(false)
     }
   },[token,perms,rows,nomeAtendente,addToast])
+
   const handleClearAll  = () => {
     if (!perms?.canClear) return
     if (!window.confirm("Isso removerá TODOS os pedidos da base de dados. Esta ação não pode ser desfeita. Confirmar?")) return
