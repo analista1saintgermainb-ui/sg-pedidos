@@ -1309,6 +1309,68 @@ function OperacaoEspecialPanel({type, rows, perms, upd, onCreateReenvio, onResol
   const pendentes = rows.filter(r=>getStage(r)===cfg.options[0]).length
   const emAndamento = Math.max(0, rows.length - pendentes)
   const inputStyle = {...getINP(),width:"100%",boxSizing:"border-box",fontSize:11,padding:"7px 9px"}
+  const moveDev = (id, status) => upd(id,{[cfg.statusKey]:status},{acao:`${cfg.title}: ${status}`})
+  const onDragStart = (e, id) => e.dataTransfer.setData("text/plain", String(id))
+  const onDropStage = (e, status) => {
+    e.preventDefault()
+    const id = Number(e.dataTransfer.getData("text/plain"))
+    if (id && perms?.canOperate) moveDev(id,status)
+  }
+
+  if (isDev) {
+    const stages = [DEV_STATUS.returning, DEV_STATUS.received, DEV_STATUS.done]
+    return (
+      <div style={{padding:"24px 32px"}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:18}}>
+          <KpiCard label="Retornando para SG" val={rows.filter(r=>getStage(r)===DEV_STATUS.returning).length} accent={rows.some(r=>getStage(r)===DEV_STATUS.returning)}/>
+          <KpiCard label="Material recebido" val={rows.filter(r=>getStage(r)===DEV_STATUS.received).length}/>
+          <KpiCard label="Finalizados" val={rows.filter(r=>getStage(r)===DEV_STATUS.done).length}/>
+        </div>
+        <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:14}}>
+          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar em devolucao..." style={{...getINP(),flex:1,padding:"10px 14px",boxSizing:"border-box",boxShadow:shadow.sm}}/>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(280px,1fr))",gap:14,alignItems:"start"}}>
+          {stages.map(stage=>{
+            const cards = data.filter(r=>getStage(r)===stage)
+            return (
+              <div key={stage} onDragOver={e=>e.preventDefault()} onDrop={e=>onDropStage(e,stage)}
+                style={{background:C.white,border:`1px solid ${C.border}`,borderRadius:10,boxShadow:shadow.sm,minHeight:420,overflow:"hidden"}}>
+                <div style={{background:C.brand,color:C.white,padding:"12px 14px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                  <div style={{fontSize:11,fontWeight:800,letterSpacing:"0.08em",textTransform:"uppercase"}}>{stage}</div>
+                  <div style={{fontSize:11,opacity:0.8}}>{cards.length}</div>
+                </div>
+                <div style={{padding:12,display:"grid",gap:10}}>
+                  {cards.length===0?<div style={{border:`1px dashed ${C.border}`,borderRadius:8,padding:18,textAlign:"center",color:C.text4,fontSize:12}}>Arraste pedidos para esta etapa</div>:cards.map(r=>(
+                    <div key={r.id} draggable={perms?.canOperate} onDragStart={e=>onDragStart(e,r.id)}
+                      style={{border:`1px solid ${C.border}`,borderRadius:8,background:C.cream,padding:12,cursor:perms?.canOperate?"grab":"default"}}>
+                      <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"flex-start",marginBottom:8}}>
+                        <div>
+                          <div style={{fontSize:12,fontWeight:800,color:C.text1}}>{r.nuvem}</div>
+                          <div style={{fontSize:12,color:C.text2,marginTop:3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:210}} title={r.destinatario}>{r.destinatario||"—"}</div>
+                        </div>
+                        <StatusBadge val={r.status}/>
+                      </div>
+                      <div style={{fontSize:11,color:C.text3,display:"grid",gap:5,marginBottom:10}}>
+                        <div><b>Transp.:</b> {r.transportadora||"—"}</div>
+                        <div><b>Motivo:</b> {r.motivoDevolucao||r.motivo||"—"}</div>
+                        <div><b>Responsavel:</b> {r.responsavel||"—"}</div>
+                      </div>
+                      {stage===DEV_STATUS.received&&perms?.canOperate&&(
+                        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                          <button onClick={()=>onResolve(r.id)} style={{background:C.green,border:"none",color:C.white,borderRadius:7,padding:"8px 10px",fontSize:10,cursor:"pointer",fontWeight:800}}>Finalizar</button>
+                          <button onClick={()=>onCreateReenvio(r.id)} style={{background:C.white,border:`1px solid ${C.border}`,color:C.text2,borderRadius:7,padding:"8px 10px",fontSize:10,cursor:"pointer",fontWeight:800}}>Reenvio</button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div style={{padding:"24px 32px"}}>
