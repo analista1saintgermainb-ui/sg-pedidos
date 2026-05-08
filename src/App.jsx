@@ -1716,7 +1716,7 @@ export default function App() {
     </div>
   )
 
-  const showImp=(importing||(initialDataLoaded&&rows.length===0))&&perms?.tabs.some(t=>["logistica","dashboard"].includes(t))
+  const showImp=importing&&perms?.tabs.some(t=>["logistica","dashboard"].includes(t))
   const pd=compact?5:9
   const PERFLABEL={admin:"Admin",logistica:"Logística",suporte:"Suporte",leitura:"Leitura"}
   const syncDot  = syncStatus==="error"?C.red:syncStatus==="saving"?C.gold:syncStatus==="saved"?"#27ae60":"#555"
@@ -1744,7 +1744,7 @@ export default function App() {
           </div>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
-          {perms?.canImport&&!showImp&&rows.length>0&&(
+          {perms?.canImport&&!showImp&&(
             <>
               <button onClick={()=>setCompact(c=>!c)} style={{background:"transparent",border:`1px solid ${C.gold}44`,color:compact?C.gold:`${C.gold}88`,borderRadius:6,padding:"6px 12px",fontSize:10,cursor:"pointer",letterSpacing:"0.08em"}}>{compact?"⊞":"⊟"}</button>
               <button onClick={()=>{const hf=lSrch||lSt!=="Todos"||lTr!=="Todos"||lUrg!=="Todos"||lAc!=="Todos";exportCSV(hf&&tab==="logistica"?filteredLog:rows)}} style={{background:"transparent",border:`1px solid #444`,color:"#888",borderRadius:6,padding:"6px 14px",fontSize:10,cursor:"pointer",letterSpacing:"0.06em"}}>↓ Exportar</button>
