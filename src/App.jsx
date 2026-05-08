@@ -55,8 +55,21 @@ const SUPA_URL     = "https://jdiuuhfhsiymttxllssr.supabase.co"
 const SUPA_KEY     = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkaXV1aGZoc2l5bXR0eGxsc3NyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc3NTMyNTcsImV4cCI6MjA5MzMyOTI1N30.wNGhwh2bCF0HZSonn09S-15kEVAQGzEP1yWvRx3l_N4"
 const SH  = { apikey: SUPA_KEY, "Content-Type": "application/json" }
 const aSH = t => ({ ...SH, Authorization: `Bearer ${t}` })
+const LOGIN_EMAIL_DOMAIN = "sg-pedidos.local"
+const cleanLogin = value => norm(value).replace(/[^a-z0-9._-]/g,"")
+const authEmailFromLogin = value => {
+  const raw = String(value||"").trim().toLowerCase()
+  if (raw.includes("@")) return raw
+  const login = cleanLogin(raw)
+  return login ? `${login}@${LOGIN_EMAIL_DOMAIN}` : ""
+}
+const displayLogin = email => {
+  const raw = String(email||"")
+  return raw.endsWith(`@${LOGIN_EMAIL_DOMAIN}`) ? raw.replace(`@${LOGIN_EMAIL_DOMAIN}`,"") : raw
+}
 
-async function signIn(email, password) {
+async function signIn(login, password) {
+  const email = authEmailFromLogin(login)
   const r = await fetch(`${SUPA_URL}/auth/v1/token?grant_type=password`, { method:"POST", headers:SH, body:JSON.stringify({email,password}) })
   const d = await r.json(); if (!r.ok) throw new Error(d.error_description||d.msg||"Erro ao fazer login"); return d
 }
@@ -916,13 +929,13 @@ function TimelineHistorico({historico, isOpen, onToggle}) {
 
 // ─── Login ────────────────────────────────────────────────────
 function LoginScreen({onLogin}) {
-  const [email,setEmail]=useState("")
+  const [login,setLogin]=useState("")
   const [password,setPassword]=useState("")
   const [loading,setLoading]=useState(false)
   const [error,setError]=useState("")
   const handle = async e => {
     e.preventDefault(); setLoading(true); setError("")
-    try { onLogin(await signIn(email,password)) }
+    try { onLogin(await signIn(login,password)) }
     catch(err) { setError(err.message) }
     finally { setLoading(false) }
   }
@@ -942,12 +955,12 @@ function LoginScreen({onLogin}) {
         <div style={{position:"absolute",top:0,left:"50%",transform:"translateX(-50%)",width:48,height:2,background:C.gold,borderRadius:1}}/>
         <form onSubmit={handle}>
           <div style={{marginBottom:20}}>
-            <label style={{fontSize:9,letterSpacing:"0.14em",textTransform:"uppercase",color:C.text3,fontWeight:500,display:"block",marginBottom:7}}>E-mail</label>
-            <input value={email} onChange={e=>setEmail(e.target.value)} type="email" placeholder="seu@email.com" required style={{...getINP(),width:"100%",boxSizing:"border-box",fontSize:13}}/>
+            <label style={{fontSize:9,letterSpacing:"0.14em",textTransform:"uppercase",color:C.text3,fontWeight:500,display:"block",marginBottom:7}}>Login</label>
+            <input value={login} onChange={e=>setLogin(e.target.value)} type="text" placeholder="seu login" required autoCapitalize="none" autoComplete="username" style={{...getINP(),width:"100%",boxSizing:"border-box",fontSize:13}}/>
           </div>
           <div style={{marginBottom:28}}>
             <label style={{fontSize:9,letterSpacing:"0.14em",textTransform:"uppercase",color:C.text3,fontWeight:500,display:"block",marginBottom:7}}>Senha</label>
-            <input value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder="••••••••" required style={{...getINP(),width:"100%",boxSizing:"border-box",fontSize:13}}/>
+            <input value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder="••••••••" required autoComplete="current-password" style={{...getINP(),width:"100%",boxSizing:"border-box",fontSize:13}}/>
           </div>
           {error&&<div style={{background:C.redSoft,color:C.red,border:`1px solid ${C.redBorder}`,borderRadius:8,padding:"10px 14px",fontSize:12,marginBottom:20,lineHeight:1.5}}>{error}</div>}
           <button type="submit" disabled={loading} style={{width:"100%",background:loading?C.text4:C.brand,border:"none",color:C.white,borderRadius:8,padding:"13px 0",fontSize:11,fontWeight:500,cursor:loading?"not-allowed":"pointer",letterSpacing:"0.18em",textTransform:"uppercase",transition:"background .2s"}}>
@@ -964,17 +977,19 @@ function LoginScreen({onLogin}) {
 function UsuariosPanel({token,addToast}) {
   const [usuarios,setUsuarios]=useState([])
   const [loading,setLoading]=useState(true)
-  const [form,setForm]=useState({email:"",nome:"",perfil:"logistica",senha:""})
+  const [form,setForm]=useState({login:"",nome:"",perfil:"logistica",senha:""})
   const [saving,setSaving]=useState(false)
   const LABEL={admin:"Admin",logistica:"Logística",suporte:"Suporte",leitura:"Somente leitura"}
   useEffect(()=>{loadUsuarios(token).then(d=>{setUsuarios(d);setLoading(false)})},[])
   const handleCreate = async e => {
     e.preventDefault(); setSaving(true)
     try {
-      const auth = await createUser(form.email,form.senha,token)
-      await saveUsuario({id:auth.id,email:form.email,nome:form.nome,perfil:form.perfil,ativo:true},token)
-      addToast(`Usuário ${form.email} criado!`)
-      setForm({email:"",nome:"",perfil:"logistica",senha:""})
+      const authEmail = authEmailFromLogin(form.login)
+      if (!authEmail) throw new Error("Informe um login valido")
+      const auth = await createUser(authEmail,form.senha,token)
+      await saveUsuario({id:auth.id,email:authEmail,nome:form.nome,perfil:form.perfil,ativo:true},token)
+      addToast(`Usuario ${displayLogin(authEmail)} criado!`)
+      setForm({login:"",nome:"",perfil:"logistica",senha:""})
       setUsuarios(await loadUsuarios(token))
     } catch(err) { addToast("Erro: "+err.message,"error") }
     finally { setSaving(false) }
@@ -999,10 +1014,10 @@ function UsuariosPanel({token,addToast}) {
         <div style={{fontSize:9,letterSpacing:"0.14em",textTransform:"uppercase",color:C.text3,marginBottom:20,fontWeight:500}}>Adicionar usuário</div>
         <form onSubmit={handleCreate}>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:14}}>
-            {[["Nome","nome","text","Nome completo"],["E-mail","email","email","email@exemplo.com"],["Senha inicial","senha","password","Mínimo 6 caracteres"]].map(([lbl,key,type,ph])=>(
+            {[["Nome","nome","text","Nome completo"],["Login","login","text","ex: rodrigo"],["Senha inicial","senha","password","Minimo 6 caracteres"]].map(([lbl,key,type,ph])=>(
               <div key={key}>
                 <label style={{fontSize:9,letterSpacing:"0.12em",textTransform:"uppercase",color:C.text3,fontWeight:500,display:"block",marginBottom:6}}>{lbl}</label>
-                <input value={form[key]} onChange={e=>setForm(f=>({...f,[key]:e.target.value}))} type={type} placeholder={ph} required={key!=="nome"} minLength={key==="senha"?6:undefined} style={{...getINP(),width:"100%",boxSizing:"border-box"}}/>
+                <input value={form[key]} onChange={e=>setForm(f=>({...f,[key]:key==="login"?cleanLogin(e.target.value):e.target.value}))} type={type} placeholder={ph} required={key!=="nome"} minLength={key==="senha"?6:undefined} autoCapitalize={key==="login"?"none":undefined} autoComplete={key==="login"?"username":undefined} style={{...getINP(),width:"100%",boxSizing:"border-box"}}/>
               </div>
             ))}
             <div>
@@ -1022,7 +1037,7 @@ function UsuariosPanel({token,addToast}) {
           <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
             <thead>
               <tr style={{background:C.brand}}>
-                {["Nome","E-mail","Perfil","Ações"].map(h=><th key={h} style={{padding:"13px 18px",textAlign:"left",color:C.gold,fontWeight:400,fontSize:9,letterSpacing:"0.14em",textTransform:"uppercase"}}>{h}</th>)}
+                {["Nome","Login","Perfil","Ações"].map(h=><th key={h} style={{padding:"13px 18px",textAlign:"left",color:C.gold,fontWeight:400,fontSize:9,letterSpacing:"0.14em",textTransform:"uppercase"}}>{h}</th>)}
               </tr>
             </thead>
             <tbody>
@@ -1030,7 +1045,7 @@ function UsuariosPanel({token,addToast}) {
               :usuarios.map((u,i)=>(
                 <tr key={u.id} style={{background:i%2===0?C.white:C.cream,borderBottom:`1px solid ${C.border}`}}>
                   <td style={{padding:"12px 18px",color:C.text1,fontWeight:500}}>{u.nome||"—"}</td>
-                  <td style={{padding:"12px 18px",color:C.text2}}>{u.email}</td>
+                  <td style={{padding:"12px 18px",color:C.text2}}>{displayLogin(u.email)}</td>
                   <td style={{padding:"12px 18px"}}>
                     <select value={u.perfil} onChange={e=>handlePerfil(u.id,e.target.value)} style={{...getINP(),padding:"5px 10px",fontSize:11}}>
                       {Object.entries(LABEL).map(([k,v])=><option key={k} value={k}>{v}</option>)}
