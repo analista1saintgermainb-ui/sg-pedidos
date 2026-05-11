@@ -59,6 +59,8 @@ const LOGIN_EMAIL_DOMAIN = "sg-pedidos.local"
 const SESSION_KEY = "sg_pedidos_session"
 const cleanLogin = value => String(value||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim().replace(/[^a-z0-9._-]/g,"")
 const authEmailFromLogin = value => {
+  const raw = String(value||"").trim().toLowerCase()
+  if (raw.includes("@")) return raw
   const login = cleanLogin(value)
   return login ? `${login}@${LOGIN_EMAIL_DOMAIN}` : ""
 }
@@ -1058,7 +1060,7 @@ function LoginScreen({onLogin}) {
         <form onSubmit={handle}>
           <div style={{marginBottom:20}}>
             <label style={{fontSize:9,letterSpacing:"0.14em",textTransform:"uppercase",color:C.text3,fontWeight:500,display:"block",marginBottom:7}}>Login</label>
-            <input value={login} onChange={e=>setLogin(cleanLogin(e.target.value))} type="text" placeholder="ex: rodrigo" required autoCapitalize="none" autoComplete="username" style={{...getINP(),width:"100%",boxSizing:"border-box",fontSize:13}}/>
+            <input value={login} onChange={e=>setLogin(e.target.value.trim().toLowerCase())} type="text" placeholder="ex: rodrigo ou email antigo" required autoCapitalize="none" autoComplete="username" style={{...getINP(),width:"100%",boxSizing:"border-box",fontSize:13}}/>
           </div>
           <div style={{marginBottom:28}}>
             <label style={{fontSize:9,letterSpacing:"0.14em",textTransform:"uppercase",color:C.text3,fontWeight:500,display:"block",marginBottom:7}}>Senha</label>
